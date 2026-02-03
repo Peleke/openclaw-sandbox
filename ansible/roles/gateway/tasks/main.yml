@@ -147,7 +147,7 @@
       WorkingDirectory=/mnt/openclaw
       Environment=HOME={{ ansible_env.HOME }}
       Environment=PATH={{ ansible_env.HOME }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
-      ExecStart=/usr/bin/node dist/index.js gateway --bind 0.0.0.0 --port 18789
+      ExecStart=/usr/bin/node dist/index.js gateway --bind 0.0.0.0 --port 18789 --allow-unconfigured
       Restart=on-failure
       RestartSec=5
 
