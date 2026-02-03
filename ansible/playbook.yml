@@ -1,0 +1,65 @@
+---
+# OpenClaw Sandbox Provisioning Playbook
+#
+# Usage:
+#   Normally run via bootstrap.sh, but can be run manually:
+#   ansible-playbook -i inventory ansible/playbook.yml
+#
+- name: Provision OpenClaw Sandbox VM
+  hosts: sandbox
+  become: true
+
+  vars:
+    # Tenant configuration
+    tenant_name: "{{ lookup('env', 'USER') | default('openclaw', true) }}"
+
+    # Mount paths (set by bootstrap.sh or override)
+    provision_path: /mnt/provision
+    openclaw_path: /mnt/openclaw
+    obsidian_path: /mnt/obsidian
+
+    # OpenClaw configuration
+    openclaw_user: openclaw
+    openclaw_home: /home/openclaw
+    openclaw_config_dir: "{{ openclaw_home }}/.openclaw"
+
+    # Gateway settings
+    gateway_port: 18789
+    gateway_bind: "0.0.0.0"
+
+  pre_tasks:
+    - name: Display provisioning info
+      ansible.builtin.debug:
+        msg: |
+          Provisioning OpenClaw Sandbox
+          Tenant: {{ tenant_name }}
+          OpenClaw source: {{ openclaw_path }}
+
+    - name: Ensure apt cache is updated
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+  roles:
+    # Phase S2: Gateway deployment
+    - role: gateway
+      tags: [gateway]
+
+    # Phase S3: Network containment
+    - role: firewall
+      tags: [firewall]
+
+    # Phase S4: Tailscale integration
+    - role: tailscale
+      tags: [tailscale]
+
+    # Phase S5: Secrets management
+    - role: secrets
+      tags: [secrets]
+
+  post_tasks:
+    - name: Display completion message
+      ansible.builtin.debug:
+        msg: |
+          OpenClaw Sandbox provisioning complete!
+          Gateway will be available on port {{ gateway_port }}

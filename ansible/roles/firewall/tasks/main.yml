@@ -1,0 +1,40 @@
+---
+# Firewall Role - Phase S3
+# Configures iptables for network containment
+#
+# TODO (Phase S3):
+# - Set OUTPUT policy to DROP
+# - Allow established/related connections
+# - Allowlist: Tailscale, LLM APIs, messaging APIs, DNS
+# - Per-channel hashlimit rate limiting
+# - Append-only audit log for outbound connections
+
+- name: Firewall role placeholder
+  ansible.builtin.debug:
+    msg: "Firewall role - Phase S3 (not yet implemented)"
+
+# Placeholder tasks for Phase S3:
+#
+# - name: Install iptables-persistent
+#   ansible.builtin.apt:
+#     name: iptables-persistent
+#     state: present
+#
+# - name: Set default OUTPUT policy to DROP
+#   ansible.builtin.iptables:
+#     chain: OUTPUT
+#     policy: DROP
+#
+# - name: Allow DNS (UDP 53)
+#   ansible.builtin.iptables:
+#     chain: OUTPUT
+#     protocol: udp
+#     destination_port: "53"
+#     jump: ACCEPT
+#
+# - name: Allow HTTPS (TCP 443)
+#   ansible.builtin.iptables:
+#     chain: OUTPUT
+#     protocol: tcp
+#     destination_port: "443"
+#     jump: ACCEPT
