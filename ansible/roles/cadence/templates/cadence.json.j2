@@ -1,0 +1,30 @@
+{
+  "enabled": {{ cadence_enabled | to_json }},
+  "vaultPath": "{{ cadence_vault_path }}",
+  "delivery": {
+    "channel": "{{ cadence_delivery_channel }}"{% if cadence_telegram_chat_id %},
+    "telegramChatId": "{{ cadence_telegram_chat_id }}"{% endif %}
+
+  },
+  "pillars": {{ cadence_pillars | to_json }},
+  "llm": {
+    "provider": "{{ cadence_llm_provider }}",
+    "model": "{{ cadence_llm_model }}"
+  },
+  "extraction": {
+    "publishTag": "::publish"
+  },
+  "digest": {
+    "minToFlush": 3,
+    "maxHoursBetween": 24,
+    "cooldownHours": 2,
+    "quietHoursStart": "22:00",
+    "quietHoursEnd": "07:00"
+  },
+  "schedule": {
+    "enabled": {{ cadence_schedule_enabled | to_json }},
+    "nightlyDigest": "{{ cadence_nightly_digest }}",
+    "morningStandup": "{{ cadence_morning_standup }}",
+    "timezone": "{{ cadence_timezone }}"
+  }
+}

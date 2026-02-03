@@ -1,0 +1,176 @@
+---
+# Cadence Role - Phase S7
+# Sets up ambient AI pipeline for journal → insight → Telegram
+
+- name: Check if Obsidian vault is mounted
+  ansible.builtin.stat:
+    path: "{{ cadence_vault_path }}"
+  register: vault_mount
+
+- name: Warn if vault not mounted
+  when: not vault_mount.stat.exists
+  ansible.builtin.debug:
+    msg: |
+      ⚠️  Obsidian vault not mounted at {{ cadence_vault_path }}
+      Run: ./bootstrap.sh --vault ~/path/to/vault
+
+- name: Check if Telegram is configured in gateway
+  ansible.builtin.command: grep -q telegram "{{ ansible_facts['env']['HOME'] }}/.openclaw/openclaw.json"
+  register: telegram_configured
+  changed_when: false
+  failed_when: false
+
+- name: Warn if Telegram not configured
+  when: telegram_configured.rc != 0
+  ansible.builtin.debug:
+    msg: |
+      ⚠️  Telegram not configured in gateway.
+      Cadence needs Telegram for delivery.
+
+- name: Check if cadence.json exists
+  ansible.builtin.stat:
+    path: "{{ ansible_facts['env']['HOME'] }}/.openclaw/cadence.json"
+  register: cadence_config
+
+- name: Create cadence.json from template
+  when: not cadence_config.stat.exists
+  ansible.builtin.template:
+    src: cadence.json.j2
+    dest: "{{ ansible_facts['env']['HOME'] }}/.openclaw/cadence.json"
+    mode: "0640"
+
+- name: Read existing cadence.json
+  when: cadence_config.stat.exists
+  ansible.builtin.slurp:
+    src: "{{ ansible_facts['env']['HOME'] }}/.openclaw/cadence.json"
+  register: existing_cadence_config
+
+- name: Parse existing config
+  when: cadence_config.stat.exists
+  ansible.builtin.set_fact:
+    cadence_current: "{{ existing_cadence_config.content | b64decode | from_json }}"
+
+- name: Fix vault path if pointing to macOS location
+  when: >
+    cadence_config.stat.exists and
+    cadence_current.vaultPath is defined and
+    '/Users/' in cadence_current.vaultPath
+  block:
+    - name: Update vault path in config
+      ansible.builtin.set_fact:
+        cadence_updated: >-
+          {{ cadence_current | combine({
+            'vaultPath': cadence_vault_path
+          }) }}
+
+    - name: Write fixed cadence.json
+      ansible.builtin.copy:
+        content: "{{ cadence_updated | to_nice_json }}"
+        dest: "{{ ansible_facts['env']['HOME'] }}/.openclaw/cadence.json"
+        mode: "0640"
+
+    - name: Display path fix
+      ansible.builtin.debug:
+        msg: "Fixed cadence vault path: {{ cadence_current.vaultPath }} → {{ cadence_vault_path }}"
+
+# Create systemd service for persistent cadence
+- name: Create cadence systemd service
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/openclaw-cadence.service
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=OpenClaw Cadence Pipeline
+      After=network.target openclaw-gateway.service
+      Wants=openclaw-gateway.service
+
+      [Service]
+      Type=simple
+      User={{ ansible_user }}
+      WorkingDirectory=/mnt/openclaw
+      Environment=HOME={{ ansible_facts['env']['HOME'] }}
+      Environment=PATH={{ ansible_facts['env']['HOME'] }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
+      # Load secrets for LLM API access
+      EnvironmentFile=-/etc/openclaw/secrets.env
+      ExecStart={{ ansible_facts['env']['HOME'] }}/.bun/bin/bun scripts/cadence.ts start
+      Restart=on-failure
+      RestartSec=10
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload systemd
+
+- name: Enable cadence service
+  become: true
+  ansible.builtin.systemd:
+    name: openclaw-cadence
+    enabled: true
+    daemon_reload: true
+
+# Only start if enabled and prerequisites met
+- name: Check cadence config state
+  ansible.builtin.slurp:
+    src: "{{ ansible_facts['env']['HOME'] }}/.openclaw/cadence.json"
+  register: final_cadence_config
+
+- name: Parse final config
+  ansible.builtin.set_fact:
+    cadence_final: "{{ final_cadence_config.content | b64decode | from_json }}"
+
+- name: Cadence status check
+  ansible.builtin.set_fact:
+    cadence_ready: >-
+      {{ cadence_final.enabled | default(false) and
+         cadence_final.vaultPath | default('') | length > 0 and
+         vault_mount.stat.exists }}
+
+- name: Start cadence service (if ready)
+  become: true
+  when: cadence_ready
+  ansible.builtin.systemd:
+    name: openclaw-cadence
+    state: started
+
+- name: Cadence not started (needs config)
+  when: not cadence_ready
+  ansible.builtin.debug:
+    msg: |
+      ════════════════════════════════════════════════════════
+      Cadence installed but NOT started.
+
+      To configure:
+        1. Edit config:
+           limactl shell openclaw-sandbox -- nano ~/.openclaw/cadence.json
+
+        2. Set:
+           - "enabled": true
+           - "vaultPath": "/mnt/obsidian"
+           - "delivery.telegramChatId": "YOUR_CHAT_ID"
+
+        3. Restart service:
+           limactl shell openclaw-sandbox -- sudo systemctl restart openclaw-cadence
+
+      Or run interactively:
+        limactl shell openclaw-sandbox -- bun /mnt/openclaw/scripts/cadence.ts start
+      ════════════════════════════════════════════════════════
+
+- name: Cadence running
+  when: cadence_ready
+  ansible.builtin.debug:
+    msg: |
+      ✅ Cadence pipeline started!
+
+      Watching: {{ cadence_final.vaultPath }}
+      Delivery: {{ cadence_final.delivery.channel | default('telegram') }}
+      Schedule: {{ 'Enabled' if cadence_final.schedule.enabled | default(false) else 'Disabled' }}
+
+      Commands:
+        # Check status
+        limactl shell openclaw-sandbox -- sudo systemctl status openclaw-cadence
+
+        # View logs
+        limactl shell openclaw-sandbox -- sudo journalctl -u openclaw-cadence -f
+
+        # Manual digest
+        limactl shell openclaw-sandbox -- bun /mnt/openclaw/scripts/cadence.ts digest
