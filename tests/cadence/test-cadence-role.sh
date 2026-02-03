@@ -264,7 +264,7 @@ if vm_exec test -f /mnt/openclaw/scripts/cadence.ts; then
   log_pass "cadence.ts script exists"
 
   # Test: Can run cadence status
-  if vm_exec bash -c 'cd /mnt/openclaw && \~/.bun/bin/bun scripts/cadence.ts status' >/dev/null 2>&1; then
+  if vm_exec "cd /mnt/openclaw && ~/.bun/bin/bun scripts/cadence.ts status" >/dev/null 2>&1; then
     log_pass "cadence.ts status runs successfully"
   else
     log_fail "cadence.ts status failed"

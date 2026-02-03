@@ -70,10 +70,14 @@
 
 - name: Install bun (if not installed)
   when: bun_version.rc != 0
+  become: true
+  become_user: "{{ ansible_user }}"
   ansible.builtin.shell: |
     curl -fsSL https://bun.sh/install | bash
   args:
     creates: "{{ user_home }}/.bun/bin/bun"
+  environment:
+    HOME: "{{ user_home }}"
 
 # Handle config/auth - link from mount or create fresh
 - name: Check if config mount exists
