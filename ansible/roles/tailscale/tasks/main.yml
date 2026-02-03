@@ -1,0 +1,37 @@
+---
+# Tailscale Role - Phase S4
+# Installs and configures Tailscale for secure remote access
+#
+# TODO (Phase S4):
+# - Install Tailscale
+# - Authenticate (requires auth key or interactive)
+# - Configure HTTPS cert via Tailscale
+# - Optional: Funnel configuration for public exposure
+
+- name: Tailscale role placeholder
+  ansible.builtin.debug:
+    msg: "Tailscale role - Phase S4 (not yet implemented)"
+
+# Placeholder tasks for Phase S4:
+#
+# - name: Add Tailscale GPG key
+#   ansible.builtin.apt_key:
+#     url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
+#     state: present
+#
+# - name: Add Tailscale repository
+#   ansible.builtin.apt_repository:
+#     repo: "deb https://pkgs.tailscale.com/stable/ubuntu noble main"
+#     state: present
+#
+# - name: Install Tailscale
+#   ansible.builtin.apt:
+#     name: tailscale
+#     state: present
+#     update_cache: true
+#
+# - name: Start Tailscale service
+#   ansible.builtin.systemd:
+#     name: tailscaled
+#     state: started
+#     enabled: true

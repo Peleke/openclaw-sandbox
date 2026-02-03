@@ -1,0 +1,14 @@
+# OpenClaw Sandbox Dependencies
+# Install with: brew bundle --file=brew/Brewfile
+
+# Lima - Linux virtual machines for macOS
+brew "lima"
+
+# Ansible - Infrastructure automation
+brew "ansible"
+
+# jq - JSON parsing (used by bootstrap.sh)
+brew "jq"
+
+# Tailscale - Secure networking (for Phase S4)
+cask "tailscale"
