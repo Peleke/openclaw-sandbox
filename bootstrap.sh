@@ -17,6 +17,7 @@ LIMA_CONFIG="${SCRIPT_DIR}/lima/${VM_NAME}.generated.yaml"
 # User-configurable paths (set via flags)
 OPENCLAW_PATH=""
 VAULT_PATH=""
+CONFIG_PATH=""  # Optional: mount host ~/.openclaw for auth/config
 
 # VM resource defaults
 VM_CPUS="${VM_CPUS:-4}"
@@ -51,14 +52,18 @@ usage() {
     cat <<EOF
 Usage: ./bootstrap.sh --openclaw PATH [OPTIONS]
 
-Required:
+Required (for new VM):
   --openclaw PATH   Path to your openclaw repository clone
 
 Options:
+  --config PATH     Mount host openclaw config at ~/.openclaw in VM (for auth/creds)
+                    Example: --config ~/.openclaw
   --vault PATH      Mount an Obsidian vault at /mnt/obsidian (read/write)
                     Example: --vault "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault"
   --kill            Force stop the VM immediately
   --delete          Delete the VM completely (allows fresh start)
+  --shell           Open interactive shell in the VM
+  --onboard         Run interactive openclaw onboard in the VM
   --help            Show this help message
 
 Environment variables:
@@ -68,7 +73,10 @@ Environment variables:
 
 Examples:
   ./bootstrap.sh --openclaw ~/Projects/openclaw
+  ./bootstrap.sh --openclaw ~/Projects/openclaw --config ~/.openclaw
   ./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
+  ./bootstrap.sh --shell                    # Open VM shell
+  ./bootstrap.sh --onboard                  # Run interactive onboard
   ./bootstrap.sh --kill
   ./bootstrap.sh --delete
 EOF
@@ -145,6 +153,18 @@ generate_lima_config() {
         fi
     fi
 
+    # Validate config path if specified (for auth/credentials)
+    local config_path=""
+    if [[ -n "$CONFIG_PATH" ]]; then
+        config_path="$(expand_path "$CONFIG_PATH")"
+        if [[ ! -d "$config_path" ]]; then
+            log_error "Config path does not exist: $config_path"
+            log_info "If you don't have an existing config, omit --config and run:"
+            log_info "  ./bootstrap.sh --onboard"
+            exit 1
+        fi
+    fi
+
     # Generate the config file directly
     cat > "$LIMA_CONFIG" << EOF
 # Lima VM configuration for OpenClaw Sandbox
@@ -188,6 +208,16 @@ EOF
         cat >> "$LIMA_CONFIG" << EOF
   - location: "${vault_path}"
     mountPoint: "/mnt/obsidian"
+    writable: true
+EOF
+    fi
+
+    # Add config mount if specified (maps to /mnt/openclaw-config in VM)
+    # The gateway role will symlink this to ~/.openclaw
+    if [[ -n "$config_path" ]]; then
+        cat >> "$LIMA_CONFIG" << EOF
+  - location: "${config_path}"
+    mountPoint: "/mnt/openclaw-config"
     writable: true
 EOF
     fi
@@ -251,6 +281,9 @@ EOF
     log_info "  /mnt/provision -> $provision_path (read-only)"
     if [[ -n "$vault_path" ]]; then
         log_info "  /mnt/obsidian  -> $vault_path"
+    fi
+    if [[ -n "$config_path" ]]; then
+        log_info "  /mnt/openclaw-config -> $config_path (auth/credentials)"
     fi
 }
 
@@ -422,6 +455,37 @@ verify_mounts() {
     log_info "All mounts verified."
 }
 
+# Open interactive shell in VM
+open_shell() {
+    if ! vm_exists; then
+        log_error "VM does not exist. Run bootstrap first."
+        exit 1
+    fi
+    if [[ "$(vm_status)" != "Running" ]]; then
+        log_info "Starting VM..."
+        limactl start "${VM_NAME}"
+    fi
+    log_info "Opening shell in VM..."
+    exec limactl shell "${VM_NAME}"
+}
+
+# Run interactive onboard in VM
+run_onboard() {
+    if ! vm_exists; then
+        log_error "VM does not exist. Run bootstrap first."
+        exit 1
+    fi
+    if [[ "$(vm_status)" != "Running" ]]; then
+        log_info "Starting VM..."
+        limactl start "${VM_NAME}"
+    fi
+    log_info "Running openclaw onboard..."
+    log_info "This is interactive - follow the prompts."
+    echo ""
+    # Run onboard interactively (needs TTY)
+    exec limactl shell "${VM_NAME}" -- bash -c "cd /mnt/openclaw && node dist/index.js onboard"
+}
+
 # Parse arguments
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -432,6 +496,12 @@ parse_args() {
             --delete)
                 delete_vm
                 ;;
+            --shell)
+                open_shell
+                ;;
+            --onboard)
+                run_onboard
+                ;;
             --help|-h)
                 usage
                 ;;
@@ -441,6 +511,14 @@ parse_args() {
                     exit 1
                 fi
                 OPENCLAW_PATH="$2"
+                shift
+                ;;
+            --config)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--config requires a path argument"
+                    exit 1
+                fi
+                CONFIG_PATH="$2"
                 shift
                 ;;
             --vault)
