@@ -4,7 +4,8 @@
 
 ### Secure, isolated VM environment for running OpenClaw agents
 
-[![Phase](https://img.shields.io/badge/Phase-S7%20Cadence-green?style=for-the-badge)](https://github.com/Peleke/openclaw-sandbox/issues)
+[![Release](https://img.shields.io/github/v/release/Peleke/openclaw-sandbox?style=for-the-badge&color=green)](https://github.com/Peleke/openclaw-sandbox/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/Peleke/openclaw-sandbox/ci.yml?style=for-the-badge&label=CI)](https://github.com/Peleke/openclaw-sandbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-macOS-blue?style=for-the-badge&logo=apple&logoColor=white)](https://lima-vm.io/)
 
@@ -334,13 +335,57 @@ limactl shell openclaw-sandbox -- sudo cat /etc/openclaw/secrets.env
 limactl shell openclaw-sandbox -- ~/test-tailscale.sh 100.x.x.x
 ```
 
+## Tests
+
+The project includes a comprehensive test suite:
+
+```bash
+# Run all tests (requires VM running)
+./tests/cadence/run-all.sh
+
+# Quick mode - skip E2E tests (no VM required)
+./tests/cadence/run-all.sh --quick
+
+# Individual test suites
+./tests/cadence/test-cadence-ansible.sh  # Ansible role validation (32 checks)
+./tests/cadence/test-cadence-role.sh     # VM deployment tests (22 checks)
+./tests/cadence/test-cadence-e2e.sh      # Full pipeline E2E (10 checks)
+```
+
+### CI/CD
+
+- **CI** runs on every PR: YAML lint, Ansible validation, ShellCheck
+- **Release** workflow triggers on `v*` tags and creates GitHub releases
+
 ## Contributing
 
 1. Fork the repo
 2. Create a feature branch
 3. Make changes
-4. Run tests: `./bootstrap.sh --openclaw ../openclaw --secrets /tmp/test.env`
-5. Open a PR
+4. Run tests: `./tests/cadence/run-all.sh --quick`
+5. Open a PR (CI will run automatically)
+
+## Releases
+
+We use [semantic versioning](https://semver.org/) with milestone-based releases.
+
+### Creating a Release
+
+```bash
+# Use the release script
+./scripts/release.sh 0.4.0
+
+# This will:
+# 1. Validate semver format
+# 2. Check you're on main with clean working directory
+# 3. Verify/prompt for CHANGELOG entry
+# 4. Create tag and push
+# 5. GitHub Actions creates the release
+```
+
+### Version History
+
+See [CHANGELOG.md](./CHANGELOG.md) for detailed release notes.
 
 ## License
 
