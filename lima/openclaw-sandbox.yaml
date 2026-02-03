@@ -1,0 +1,115 @@
+# Lima VM configuration for OpenClaw Sandbox
+# https://lima-vm.io/docs/reference/yaml/
+
+# VM identification
+vmType: "vz"  # Virtualization.framework (faster on Apple Silicon)
+
+# Base image - Ubuntu 24.04 LTS (Noble Numbat)
+images:
+  - location: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img"
+    arch: "x86_64"
+  - location: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+# Resource limits (configurable via environment or override file)
+cpus: 4
+memory: "8GiB"
+disk: "50GiB"
+
+# Rosetta for x86_64 emulation on Apple Silicon
+rosetta:
+  enabled: true
+  binfmt: true
+
+# SSH configuration
+ssh:
+  localPort: 0  # Auto-assign port
+  loadDotSSHPubKeys: true
+
+# Host mounts
+mounts:
+  # Obsidian vault - uncomment and customize, or use: ./bootstrap.sh --vault /path/to/vault
+  # Example for iCloud:
+  # - location: "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/YourVault"
+  #   mountPoint: "/mnt/obsidian"
+  #   writable: true
+
+  # OpenClaw repository - read/write for development
+  - location: "~/Documents/Projects/openclaw"
+    mountPoint: "/mnt/openclaw"
+    writable: true
+
+  # This provisioning repo - read-only
+  - location: "~/Documents/Projects/openclaw-sandbox"
+    mountPoint: "/mnt/provision"
+    writable: false
+
+# Network configuration
+# Default: shared network with host
+networks:
+  - lima: shared
+
+# Containerd (for running containers inside the VM if needed)
+containerd:
+  system: false
+  user: false
+
+# Provisioning scripts run on first boot
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      # Update package lists
+      apt-get update
+
+      # Install essential packages
+      apt-get install -y \
+        curl \
+        git \
+        jq \
+        build-essential \
+        python3 \
+        python3-pip \
+        ca-certificates \
+        gnupg
+
+      # Clean up
+      apt-get clean
+      rm -rf /var/lib/apt/lists/*
+
+  - mode: user
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+
+      # Create standard directories
+      mkdir -p ~/.openclaw
+      mkdir -p ~/.local/bin
+
+      echo "OpenClaw sandbox VM provisioned successfully"
+
+# Port forwarding (gateway default port)
+portForwards:
+  - guestPort: 18789
+    hostPort: 18789
+    proto: tcp
+
+# Environment variables available in the VM
+env:
+  OPENCLAW_SANDBOX: "true"
+
+# Message shown after VM starts
+message: |
+  OpenClaw Sandbox VM is ready!
+
+  Mounts:
+    /mnt/openclaw  -> ~/Documents/Projects/openclaw
+    /mnt/provision -> ~/Documents/Projects/openclaw-sandbox (read-only)
+    /mnt/obsidian  -> (only if --vault was used)
+
+  Gateway port 18789 is forwarded to host.
+
+  To stop: limactl stop openclaw-sandbox
+  To kill: ./bootstrap.sh --kill
