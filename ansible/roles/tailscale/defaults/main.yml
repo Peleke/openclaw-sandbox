@@ -1,0 +1,21 @@
+---
+# Tailscale Role Defaults - Phase S4
+# Routes Tailscale traffic through host (no Tailscale daemon in VM)
+
+# Tailscale CGNAT range (used by all Tailscale nodes)
+tailscale_cidr: "100.64.0.0/10"
+
+# Test IPs to verify Tailscale connectivity
+# These should be Tailscale IPs you expect to be reachable
+# Leave empty to skip connectivity tests
+tailscale_test_ips: []
+# Example:
+# tailscale_test_ips:
+#   - "100.78.56.68"  # My MacBook
+#   - "100.85.105.20" # My iPhone
+
+# Whether to verify Tailscale routing works
+tailscale_verify_routing: true
+
+# Fail the playbook if Tailscale routing doesn't work
+tailscale_fail_on_unreachable: false

@@ -94,6 +94,15 @@
     proto: tcp
     direction: out
 
+# Allow HTTP for apt package updates (Ubuntu mirrors use HTTP)
+- name: Allow outbound HTTP (apt updates)
+  become: true
+  community.general.ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+    direction: out
+
 # Tailscale support (for forwarding through host)
 - name: Allow outbound to Tailscale network
   become: true
@@ -155,6 +164,7 @@
 
       ALLOWED OUTBOUND:
         - DNS (53 UDP/TCP)
+        - HTTP (80 TCP) - for apt updates
         - HTTPS (443 TCP) - for LLM APIs
         - Tailscale ({{ firewall_tailscale_cidr }})
         - NTP (123 UDP)

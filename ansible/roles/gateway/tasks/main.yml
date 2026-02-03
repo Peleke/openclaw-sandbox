@@ -127,6 +127,10 @@
       Fresh config directory created - run onboard to configure
       {% endif %}
 
+# Fix VM-specific paths (macOS paths don't work in Linux)
+- name: Apply VM path fixes
+  ansible.builtin.include_tasks: fix-vm-paths.yml
+
 # Install OpenClaw dependencies
 # Fix: Detect platform mismatch (macOS modules don't work on Linux)
 - name: Check if node_modules exists
@@ -203,6 +207,8 @@
       WorkingDirectory=/mnt/openclaw
       Environment=HOME={{ ansible_facts['env']['HOME'] }}
       Environment=PATH={{ ansible_facts['env']['HOME'] }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
+      # Load secrets from /etc/openclaw/secrets.env (- prefix = don't fail if missing)
+      EnvironmentFile=-/etc/openclaw/secrets.env
       ExecStart=/usr/bin/node dist/index.js gateway --bind lan --port 18789 --allow-unconfigured
       Restart=on-failure
       RestartSec=5

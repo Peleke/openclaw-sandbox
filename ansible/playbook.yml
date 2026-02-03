@@ -41,6 +41,10 @@
         cache_valid_time: 3600
 
   roles:
+    # Phase S5: Secrets management (runs first to make secrets available)
+    - role: secrets
+      tags: [secrets]
+
     # Phase S2: Gateway deployment
     - role: gateway
       tags: [gateway]
@@ -52,10 +56,6 @@
     # Phase S4: Tailscale integration
     - role: tailscale
       tags: [tailscale]
-
-    # Phase S5: Secrets management
-    - role: secrets
-      tags: [secrets]
 
   post_tasks:
     - name: Display completion message

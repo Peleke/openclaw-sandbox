@@ -17,7 +17,8 @@ LIMA_CONFIG="${SCRIPT_DIR}/lima/${VM_NAME}.generated.yaml"
 # User-configurable paths (set via flags)
 OPENCLAW_PATH=""
 VAULT_PATH=""
-CONFIG_PATH=""  # Optional: mount host ~/.openclaw for auth/config
+CONFIG_PATH=""   # Optional: mount host ~/.openclaw for auth/config
+SECRETS_PATH=""  # Optional: mount a secrets .env file
 
 # VM resource defaults
 VM_CPUS="${VM_CPUS:-4}"
@@ -56,10 +57,14 @@ Required (for new VM):
   --openclaw PATH   Path to your openclaw repository clone
 
 Options:
+  --secrets PATH    Mount a secrets .env file into VM (recommended for dev)
+                    Example: --secrets ~/.openclaw-secrets.env
   --config PATH     Mount host openclaw config at ~/.openclaw in VM (for auth/creds)
                     Example: --config ~/.openclaw
   --vault PATH      Mount an Obsidian vault at /mnt/obsidian (read/write)
                     Example: --vault "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault"
+  -e KEY=VALUE      Pass extra variable to Ansible (can be used multiple times)
+                    Example: -e "secrets_anthropic_api_key=sk-ant-xxx"
   --kill            Force stop the VM immediately
   --delete          Delete the VM completely (allows fresh start)
   --shell           Open interactive shell in the VM
@@ -73,8 +78,10 @@ Environment variables:
 
 Examples:
   ./bootstrap.sh --openclaw ~/Projects/openclaw
+  ./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.openclaw-secrets.env
   ./bootstrap.sh --openclaw ~/Projects/openclaw --config ~/.openclaw
   ./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
+  ./bootstrap.sh --openclaw ../openclaw -e "secrets_anthropic_api_key=sk-ant-xxx"
   ./bootstrap.sh --shell                    # Open VM shell
   ./bootstrap.sh --onboard                  # Run interactive onboard
   ./bootstrap.sh --kill
@@ -165,6 +172,19 @@ generate_lima_config() {
         fi
     fi
 
+    # Validate secrets path if specified
+    local secrets_path=""
+    if [[ -n "$SECRETS_PATH" ]]; then
+        secrets_path="$(expand_path "$SECRETS_PATH")"
+        if [[ ! -f "$secrets_path" ]]; then
+            log_error "Secrets file does not exist: $secrets_path"
+            log_info "Create a .env file with your secrets, e.g.:"
+            log_info "  ANTHROPIC_API_KEY=sk-ant-xxx"
+            log_info "  OPENCLAW_GATEWAY_PASSWORD=mypass"
+            exit 1
+        fi
+    fi
+
     # Generate the config file directly
     cat > "$LIMA_CONFIG" << EOF
 # Lima VM configuration for OpenClaw Sandbox
@@ -219,6 +239,21 @@ EOF
   - location: "${config_path}"
     mountPoint: "/mnt/openclaw-config"
     writable: true
+EOF
+    fi
+
+    # Add secrets file mount if specified
+    # Lima requires directory mounts, so we mount the parent directory
+    # and the Ansible role will look for the specific file
+    if [[ -n "$secrets_path" ]]; then
+        local secrets_dir
+        local secrets_filename
+        secrets_dir="$(dirname "$secrets_path")"
+        secrets_filename="$(basename "$secrets_path")"
+        cat >> "$LIMA_CONFIG" << EOF
+  - location: "${secrets_dir}"
+    mountPoint: "/mnt/secrets"
+    writable: false
 EOF
     fi
 
@@ -284,6 +319,10 @@ EOF
     fi
     if [[ -n "$config_path" ]]; then
         log_info "  /mnt/openclaw-config -> $config_path (auth/credentials)"
+    fi
+    if [[ -n "$secrets_path" ]]; then
+        log_info "  /mnt/secrets -> $(dirname "$secrets_path") (secrets dir, read-only)"
+        log_info "    Secrets file: $(basename "$secrets_path")"
     fi
 }
 
@@ -404,6 +443,12 @@ EOF
 
     log_info "Inventory: $inventory_file"
 
+    # Determine secrets filename if secrets path is set
+    local secrets_filename=""
+    if [[ -n "$SECRETS_PATH" ]]; then
+        secrets_filename="$(basename "$(expand_path "$SECRETS_PATH")")"
+    fi
+
     # Run the playbook
     ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook \
         -i "$inventory_file" \
@@ -411,7 +456,9 @@ EOF
         -e "tenant_name=$(whoami)" \
         -e "provision_path=/mnt/provision" \
         -e "openclaw_path=/mnt/openclaw" \
-        -e "obsidian_path=/mnt/obsidian"
+        -e "obsidian_path=/mnt/obsidian" \
+        -e "secrets_filename=${secrets_filename}" \
+        ${ANSIBLE_EXTRA_VARS[@]+"${ANSIBLE_EXTRA_VARS[@]}"}
 
     local ansible_exit=$?
     rm -f "$inventory_file"
@@ -492,6 +539,9 @@ run_onboard() {
     exec limactl shell "${VM_NAME}" -- bash -c "cd /mnt/openclaw && node dist/index.js onboard"
 }
 
+# Extra Ansible variables (collected via -e flags)
+ANSIBLE_EXTRA_VARS=()
+
 # Parse arguments
 parse_args() {
     while [[ $# -gt 0 ]]; do
@@ -527,12 +577,28 @@ parse_args() {
                 CONFIG_PATH="$2"
                 shift
                 ;;
+            --secrets)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--secrets requires a path argument"
+                    exit 1
+                fi
+                SECRETS_PATH="$2"
+                shift
+                ;;
             --vault)
                 if [[ -z "${2:-}" ]]; then
                     log_error "--vault requires a path argument"
                     exit 1
                 fi
                 VAULT_PATH="$2"
+                shift
+                ;;
+            -e)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "-e requires a KEY=VALUE argument"
+                    exit 1
+                fi
+                ANSIBLE_EXTRA_VARS+=("-e" "$2")
                 shift
                 ;;
             *)
