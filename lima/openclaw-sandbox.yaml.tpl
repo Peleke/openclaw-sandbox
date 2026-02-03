@@ -1,4 +1,5 @@
 # Lima VM configuration for OpenClaw Sandbox
+# NOTE: This is a TEMPLATE. bootstrap.sh generates the actual config.
 # https://lima-vm.io/docs/reference/yaml/
 
 # VM identification
@@ -11,10 +12,10 @@ images:
   - location: "https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-arm64.img"
     arch: "aarch64"
 
-# Resource limits (configurable via environment or override file)
-cpus: 4
-memory: "8GiB"
-disk: "50GiB"
+# Resource limits
+cpus: {{CPUS}}
+memory: "{{MEMORY}}"
+disk: "{{DISK}}"
 
 # Rosetta for x86_64 emulation on Apple Silicon
 rosetta:
@@ -26,30 +27,15 @@ ssh:
   localPort: 0  # Auto-assign port
   loadDotSSHPubKeys: true
 
-# Host mounts
+# Host mounts - paths are expanded by bootstrap.sh
 mounts:
-  # Obsidian vault - uncomment and customize, or use: ./bootstrap.sh --vault /path/to/vault
-  # Example for iCloud:
-  # - location: "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/YourVault"
-  #   mountPoint: "/mnt/obsidian"
-  #   writable: true
-
-  # OpenClaw repository - read/write for development
-  - location: "~/Documents/Projects/openclaw"
-    mountPoint: "/mnt/openclaw"
-    writable: true
-
-  # This provisioning repo - read-only
-  - location: "~/Documents/Projects/openclaw-sandbox"
-    mountPoint: "/mnt/provision"
-    writable: false
+{{MOUNTS}}
 
 # Network configuration
-# Default: shared network with host
 networks:
   - lima: shared
 
-# Containerd (for running containers inside the VM if needed)
+# Containerd (not needed for now)
 containerd:
   system: false
   user: false
@@ -105,9 +91,7 @@ message: |
   OpenClaw Sandbox VM is ready!
 
   Mounts:
-    /mnt/openclaw  -> ~/Documents/Projects/openclaw
-    /mnt/provision -> ~/Documents/Projects/openclaw-sandbox (read-only)
-    /mnt/obsidian  -> (only if --vault was used)
+{{MOUNT_MESSAGE}}
 
   Gateway port 18789 is forwarded to host.
 

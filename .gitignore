@@ -19,7 +19,8 @@ secrets.yaml
 
 # Lima state (managed by lima, not this repo)
 *.pid
-# Auto-generated override file (contains user-specific vault path)
+# Auto-generated config (contains user-specific paths)
+lima/*.generated.yaml
 lima/*.override.yaml
 
 # Editor/IDE
