@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate Ansible
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install yamllint
+
+      - name: Lint YAML files
+        run: |
+          yamllint -d relaxed ansible/
+
+      - name: Validate Ansible syntax
+        run: |
+          # Basic syntax check - ensure YAML is valid
+          python -c "
+          import yaml
+          import sys
+          from pathlib import Path
+
+          errors = []
+          for f in Path('ansible').rglob('*.yml'):
+              try:
+                  yaml.safe_load(f.read_text())
+              except yaml.YAMLError as e:
+                  errors.append(f'{f}: {e}')
+
+          if errors:
+              print('YAML syntax errors:')
+              for e in errors:
+                  print(f'  {e}')
+              sys.exit(1)
+          print('✅ All YAML files valid')
+          "
+
+  test-quick:
+    name: Quick Tests (Ansible Validation)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Ansible validation tests
+        run: |
+          chmod +x tests/cadence/test-cadence-ansible.sh
+          ./tests/cadence/test-cadence-ansible.sh
+
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './scripts'
+          additional_files: 'bootstrap.sh tests/cadence/*.sh'
