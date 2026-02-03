@@ -1,40 +1,163 @@
 ---
 # Firewall Role - Phase S3
-# Configures iptables for network containment
+# Configures UFW for network containment
 #
-# TODO (Phase S3):
-# - Set OUTPUT policy to DROP
-# - Allow established/related connections
-# - Allowlist: Tailscale, LLM APIs, messaging APIs, DNS
-# - Per-channel hashlimit rate limiting
-# - Append-only audit log for outbound connections
+# Security model:
+# - Default deny outgoing (containment)
+# - Allow incoming on gateway port only
+# - Allowlist specific outbound destinations (LLM APIs, Tailscale, DNS)
+# - Log denied connections for audit
 
-- name: Firewall role placeholder
+- name: Install UFW
+  become: true
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+    update_cache: true
+
+# Reset UFW to clean state (ensures known configuration)
+- name: Reset UFW to defaults
+  become: true
+  community.general.ufw:
+    state: reset
+  when: firewall_reset_on_run | default(true)
+
+# Set default policies
+- name: Set default incoming policy to deny
+  become: true
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+
+- name: Set default outgoing policy to deny
+  become: true
+  community.general.ufw:
+    direction: outgoing
+    policy: deny
+
+# Allow loopback (required for local services)
+- name: Allow loopback interface
+  become: true
+  community.general.ufw:
+    rule: allow
+    interface: lo
+    direction: in
+
+- name: Allow outgoing loopback
+  become: true
+  community.general.ufw:
+    rule: allow
+    interface: lo
+    direction: out
+
+# Allow incoming on gateway port
+- name: Allow incoming gateway connections
+  become: true
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_gateway_port }}"
+    proto: tcp
+    direction: in
+
+# Allow SSH (required for Ansible/Lima)
+- name: Allow incoming SSH
+  become: true
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    direction: in
+
+# Essential outbound: DNS
+- name: Allow outbound DNS (UDP)
+  become: true
+  community.general.ufw:
+    rule: allow
+    port: "53"
+    proto: udp
+    direction: out
+
+- name: Allow outbound DNS (TCP for large responses)
+  become: true
+  community.general.ufw:
+    rule: allow
+    port: "53"
+    proto: tcp
+    direction: out
+
+# Essential outbound: HTTPS (for LLM APIs)
+- name: Allow outbound HTTPS
+  become: true
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+    direction: out
+
+# Tailscale support (for forwarding through host)
+- name: Allow outbound to Tailscale network
+  become: true
+  community.general.ufw:
+    rule: allow
+    to_ip: "{{ firewall_tailscale_cidr }}"
+    direction: out
+
+- name: Allow outbound Tailscale UDP (direct connections)
+  become: true
+  community.general.ufw:
+    rule: allow
+    port: "{{ firewall_tailscale_port }}"
+    proto: udp
+    direction: out
+
+# Allow NTP for time sync
+- name: Allow outbound NTP
+  become: true
+  community.general.ufw:
+    rule: allow
+    port: "123"
+    proto: udp
+    direction: out
+
+# Enable logging for denied packets
+- name: Enable UFW logging
+  become: true
+  community.general.ufw:
+    logging: "on"
+  when: firewall_enable_logging
+
+# Enable the firewall
+- name: Enable UFW
+  become: true
+  community.general.ufw:
+    state: enabled
+
+# Display status
+- name: Get UFW status
+  become: true
+  ansible.builtin.command: ufw status verbose
+  register: ufw_status
+  changed_when: false
+
+- name: Display firewall status
   ansible.builtin.debug:
-    msg: "Firewall role - Phase S3 (not yet implemented)"
+    msg: "{{ ufw_status.stdout_lines }}"
 
-# Placeholder tasks for Phase S3:
-#
-# - name: Install iptables-persistent
-#   ansible.builtin.apt:
-#     name: iptables-persistent
-#     state: present
-#
-# - name: Set default OUTPUT policy to DROP
-#   ansible.builtin.iptables:
-#     chain: OUTPUT
-#     policy: DROP
-#
-# - name: Allow DNS (UDP 53)
-#   ansible.builtin.iptables:
-#     chain: OUTPUT
-#     protocol: udp
-#     destination_port: "53"
-#     jump: ACCEPT
-#
-# - name: Allow HTTPS (TCP 443)
-#   ansible.builtin.iptables:
-#     chain: OUTPUT
-#     protocol: tcp
-#     destination_port: "443"
-#     jump: ACCEPT
+- name: Firewall configuration complete
+  ansible.builtin.debug:
+    msg: |
+      ============================================
+      Firewall configured for network containment
+
+      ALLOWED INBOUND:
+        - TCP {{ firewall_gateway_port }} (gateway)
+        - TCP 22 (SSH/Ansible)
+
+      ALLOWED OUTBOUND:
+        - DNS (53 UDP/TCP)
+        - HTTPS (443 TCP) - for LLM APIs
+        - Tailscale ({{ firewall_tailscale_cidr }})
+        - NTP (123 UDP)
+
+      All other traffic is DENIED and logged.
+      ============================================

@@ -313,6 +313,12 @@ install_deps() {
         log_error "Brewfile not found at ${SCRIPT_DIR}/brew/Brewfile"
         exit 1
     fi
+
+    # Install Ansible collections
+    if [[ -f "${SCRIPT_DIR}/ansible/requirements.yml" ]]; then
+        log_step "Installing Ansible collections..."
+        ansible-galaxy collection install -r "${SCRIPT_DIR}/ansible/requirements.yml" --force-with-deps >/dev/null 2>&1 || true
+    fi
 }
 
 # Check if VM exists

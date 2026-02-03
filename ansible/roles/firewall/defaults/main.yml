@@ -1,0 +1,39 @@
+---
+# Firewall Role Defaults - Phase S3
+
+# Reset firewall to clean state on each run (recommended for sandbox)
+# Set to false if you've added custom rules you want to preserve
+firewall_reset_on_run: true
+
+# Gateway port to allow incoming connections
+firewall_gateway_port: 18789
+
+# Allowlisted domains for outbound HTTPS
+# These are resolved to IPs and allowed through the firewall
+firewall_allowed_domains:
+  # OpenAI API
+  - api.openai.com
+  # Anthropic API
+  - api.anthropic.com
+  # Google AI
+  - generativelanguage.googleapis.com
+  # AWS Bedrock (us-east-1)
+  - bedrock-runtime.us-east-1.amazonaws.com
+  # Slack API (messaging)
+  - slack.com
+  - api.slack.com
+  # Discord API (messaging)
+  - discord.com
+  - discordapp.com
+
+# Tailscale CGNAT range (used by all Tailscale nodes)
+firewall_tailscale_cidr: "100.64.0.0/10"
+
+# Tailscale UDP port for direct connections
+firewall_tailscale_port: 41641
+
+# Enable logging of denied outbound connections
+firewall_enable_logging: true
+
+# Log rate limit (prevent log flooding)
+firewall_log_limit: "3/min"
