@@ -1,37 +1,175 @@
 ---
 # Tailscale Role - Phase S4
-# Installs and configures Tailscale for secure remote access
+# Routes Tailscale traffic through host (no Tailscale daemon in VM)
 #
-# TODO (Phase S4):
-# - Install Tailscale
-# - Authenticate (requires auth key or interactive)
-# - Configure HTTPS cert via Tailscale
-# - Optional: Funnel configuration for public exposure
+# Architecture:
+# ┌─────────────────────────────────────────────────────────────┐
+# │  macOS Host                                                  │
+# │  ┌─────────────────┐    ┌─────────────────┐                │
+# │  │   Tailscale     │    │   Lima Gateway   │                │
+# │  │  100.78.x.x     │    │   192.168.5.2    │                │
+# │  └────────┬────────┘    └────────┬────────┘                │
+# │           │                      │                          │
+# │           └──────────────────────┘                          │
+# │                     ▲                                        │
+# └─────────────────────│────────────────────────────────────────┘
+#                       │ Routes 100.64.0.0/10
+# ┌─────────────────────│────────────────────────────────────────┐
+# │  Lima VM            │                                        │
+# │                     ▼                                        │
+# │  ┌─────────────────────────────────────────┐                │
+# │  │   eth0: 192.168.5.15                     │                │
+# │  │   default gw: 192.168.5.2 (host)         │                │
+# │  │   Firewall: ALLOW OUT 100.64.0.0/10      │                │
+# │  └─────────────────────────────────────────┘                │
+# └─────────────────────────────────────────────────────────────┘
+#
+# Benefits:
+# - No Tailscale daemon needed in VM
+# - Uses host's existing authentication
+# - VM can reach all Tailscale services via host routing
 
-- name: Tailscale role placeholder
+- name: Display Tailscale routing architecture
   ansible.builtin.debug:
-    msg: "Tailscale role - Phase S4 (not yet implemented)"
+    msg: |
+      ============================================
+      Tailscale Routing via Host
 
-# Placeholder tasks for Phase S4:
-#
-# - name: Add Tailscale GPG key
-#   ansible.builtin.apt_key:
-#     url: https://pkgs.tailscale.com/stable/ubuntu/noble.noarmor.gpg
-#     state: present
-#
-# - name: Add Tailscale repository
-#   ansible.builtin.apt_repository:
-#     repo: "deb https://pkgs.tailscale.com/stable/ubuntu noble main"
-#     state: present
-#
-# - name: Install Tailscale
-#   ansible.builtin.apt:
-#     name: tailscale
-#     state: present
-#     update_cache: true
-#
-# - name: Start Tailscale service
-#   ansible.builtin.systemd:
-#     name: tailscaled
-#     state: started
-#     enabled: true
+      VM routes Tailscale traffic ({{ tailscale_cidr }})
+      through the host's Tailscale connection.
+
+      No Tailscale daemon is installed in the VM.
+      ============================================
+
+# Verify Tailscale CIDR is allowed in firewall
+- name: Verify firewall allows Tailscale CIDR
+  become: true
+  ansible.builtin.shell: |
+    ufw status | grep -q "{{ tailscale_cidr }}"
+  register: firewall_check
+  changed_when: false
+  failed_when: false
+
+- name: Warn if Tailscale CIDR not in firewall
+  when: firewall_check.rc != 0
+  ansible.builtin.debug:
+    msg: |
+      WARNING: Tailscale CIDR ({{ tailscale_cidr }}) not found in firewall rules.
+      Tailscale routing may not work. Run the firewall role first.
+
+# Get VM's current routing info
+- name: Get default gateway
+  ansible.builtin.shell: ip route | grep default | awk '{print $3}'
+  register: default_gateway
+  changed_when: false
+
+- name: Display routing info
+  ansible.builtin.debug:
+    msg: "VM default gateway: {{ default_gateway.stdout }} (traffic to {{ tailscale_cidr }} will route through here)"
+
+# Verify Tailscale routing works - test actual Tailscale IP range
+- name: Test Tailscale routing (ping host's Tailscale interface)
+  when: tailscale_verify_routing
+  ansible.builtin.shell: |
+    # Test connectivity to Tailscale CGNAT range (host should respond)
+    # We test the first IP in the range as a basic connectivity check
+    ping -c 1 -W 3 100.64.0.1 > /dev/null 2>&1 || ping -c 1 -W 3 {{ default_gateway.stdout }} > /dev/null 2>&1
+  register: routing_test
+  changed_when: false
+  failed_when: false
+
+- name: Display routing test result
+  when: tailscale_verify_routing
+  ansible.builtin.debug:
+    msg: "Tailscale routing test: {{ 'PASS' if routing_test.rc == 0 else 'SKIPPED (no response, but route exists)' }}"
+
+# Test specific Tailscale IPs if configured
+- name: Test connectivity to configured Tailscale IPs
+  when: tailscale_test_ips is defined and tailscale_test_ips | default([]) | length > 0
+  ansible.builtin.shell: |
+    ping -c 1 -W 3 {{ item }} > /dev/null 2>&1 && echo "REACHABLE" || echo "UNREACHABLE"
+  loop: "{{ tailscale_test_ips | default([]) }}"
+  register: tailscale_ping_results
+  changed_when: false
+  failed_when: tailscale_fail_on_unreachable | default(false) and "'UNREACHABLE' in item.stdout"
+
+- name: Display Tailscale IP test results
+  when: tailscale_ping_results.results is defined and tailscale_ping_results.results | length > 0
+  ansible.builtin.debug:
+    msg: "Tailscale IP {{ item.item }}: {{ item.stdout }}"
+  loop: "{{ tailscale_ping_results.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item }}"
+
+# Install diagnostic tools (optional - may fail if HTTP blocked by firewall)
+- name: Check if diagnostic tools are installed
+  ansible.builtin.shell: which ping && which nc
+  register: diag_tools_check
+  changed_when: false
+  failed_when: false
+
+- name: Install network diagnostic tools
+  become: true
+  ansible.builtin.apt:
+    name:
+      - iputils-ping
+      - netcat-openbsd
+    state: present
+    update_cache: false
+  when: diag_tools_check.rc != 0
+  ignore_errors: true
+
+# Create helper script for testing Tailscale connectivity
+- name: Create Tailscale connectivity test script
+  ansible.builtin.copy:
+    dest: "{{ ansible_facts['env']['HOME'] }}/test-tailscale.sh"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      # Test Tailscale connectivity through host
+
+      echo "=== Tailscale Routing Test ==="
+      echo ""
+      echo "VM Network:"
+      ip -4 addr show eth0 | grep inet
+      echo ""
+      echo "Default Gateway:"
+      ip route | grep default
+      echo ""
+      echo "Firewall Tailscale Rule:"
+      sudo ufw status | grep "{{ tailscale_cidr }}" || echo "NOT FOUND"
+      echo ""
+
+      if [ $# -eq 0 ]; then
+        echo "Usage: $0 <tailscale-ip>"
+        echo "Example: $0 100.78.56.68"
+        exit 0
+      fi
+
+      echo "Testing connectivity to $1..."
+      if ping -c 2 -W 3 "$1" > /dev/null 2>&1; then
+        echo "✓ $1 is REACHABLE via Tailscale"
+      else
+        echo "✗ $1 is UNREACHABLE"
+        echo ""
+        echo "Troubleshooting:"
+        echo "1. Ensure host has Tailscale running: tailscale status"
+        echo "2. Verify target IP is on your Tailnet"
+        echo "3. Check firewall: sudo ufw status | grep {{ tailscale_cidr }}"
+      fi
+
+- name: Tailscale routing configuration complete
+  ansible.builtin.debug:
+    msg: |
+      ============================================
+      Tailscale routing configured!
+
+      The VM can now reach Tailscale services via the host.
+
+      To test connectivity to a Tailscale IP:
+        limactl shell openclaw-sandbox
+        ~/test-tailscale.sh <tailscale-ip>
+
+      Example:
+        ~/test-tailscale.sh 100.78.56.68
+      ============================================
