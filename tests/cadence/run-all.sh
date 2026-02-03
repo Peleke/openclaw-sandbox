@@ -78,9 +78,21 @@ run_test "Ansible Role Validation" "$SCRIPT_DIR/test-cadence-ansible.sh"
 run_test "Role Deployment Tests" "$SCRIPT_DIR/test-cadence-role.sh" "$QUICK_MODE"
 
 # ============================================================
-# Test 3: E2E Pipeline Tests (requires VM + enabled cadence)
+# Test 3: E2E Pipeline Tests (requires VM + vault mounted + cadence enabled)
 # ============================================================
-run_test "E2E Pipeline Tests" "$SCRIPT_DIR/test-cadence-e2e.sh" "$QUICK_MODE"
+# E2E tests require more setup (vault mounted, cadence enabled)
+# Skip if vault isn't available
+if limactl shell openclaw-sandbox -- test -d /mnt/obsidian 2>/dev/null; then
+  run_test "E2E Pipeline Tests" "$SCRIPT_DIR/test-cadence-e2e.sh" "$QUICK_MODE"
+else
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${CYAN}Running:${NC} E2E Pipeline Tests"
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo ""
+  echo -e "${YELLOW}SKIPPED${NC} (vault not mounted - run bootstrap.sh --vault ~/path/to/vault)"
+  ((TESTS_SKIPPED++))
+  echo ""
+fi
 
 # ============================================================
 # Summary
