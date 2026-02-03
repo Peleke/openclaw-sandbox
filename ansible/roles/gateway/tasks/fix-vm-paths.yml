@@ -1,0 +1,64 @@
+---
+# Fix VM-specific paths in OpenClaw config
+# The host config has macOS paths that don't work in the Linux VM
+
+- name: Check if config file exists
+  ansible.builtin.stat:
+    path: "{{ ansible_facts['env']['HOME'] }}/.openclaw/openclaw.json"
+  register: config_file
+
+- name: Fix VM paths in config (if config exists)
+  when: config_file.stat.exists
+  block:
+    - name: Read current config
+      ansible.builtin.slurp:
+        src: "{{ ansible_facts['env']['HOME'] }}/.openclaw/openclaw.json"
+      register: config_content
+
+    - name: Parse config
+      ansible.builtin.set_fact:
+        openclaw_config: "{{ config_content.content | b64decode | from_json }}"
+
+    - name: Fix workspace path (macOS -> Linux)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': openclaw_config.agents | default({}) | combine({
+              'defaults': (openclaw_config.agents.defaults | default({})) | combine({
+                'workspace': ansible_facts['env']['HOME'] + '/.openclaw/workspace'
+              })
+            })
+          }, recursive=true) }}
+      when: openclaw_config.agents.defaults.workspace is defined and '/Users/' in (openclaw_config.agents.defaults.workspace | default(''))
+
+    - name: Fix Telegram dmPolicy for sandbox (open access)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'channels': openclaw_config.channels | default({}) | combine({
+              'telegram': (openclaw_config.channels.telegram | default({})) | combine({
+                'dmPolicy': 'open',
+                'allowFrom': ['*']
+              })
+            })
+          }, recursive=true) }}
+      when: openclaw_config.channels.telegram is defined
+
+    - name: Write fixed config
+      ansible.builtin.copy:
+        content: "{{ openclaw_config | to_nice_json }}"
+        dest: "{{ ansible_facts['env']['HOME'] }}/.openclaw/openclaw.json"
+        mode: "0640"
+
+    - name: Create workspace directory
+      ansible.builtin.file:
+        path: "{{ ansible_facts['env']['HOME'] }}/.openclaw/workspace"
+        state: directory
+        mode: "0750"
+
+    - name: Display path fixes applied
+      ansible.builtin.debug:
+        msg: |
+          Applied VM path fixes:
+          - workspace: {{ ansible_facts['env']['HOME'] }}/.openclaw/workspace
+          - dmPolicy: open (with allowFrom: ["*"])

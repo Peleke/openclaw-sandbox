@@ -127,6 +127,10 @@
       Fresh config directory created - run onboard to configure
       {% endif %}
 
+# Fix VM-specific paths (macOS paths don't work in Linux)
+- name: Apply VM path fixes
+  ansible.builtin.include_tasks: fix-vm-paths.yml
+
 # Install OpenClaw dependencies
 # Fix: Detect platform mismatch (macOS modules don't work on Linux)
 - name: Check if node_modules exists

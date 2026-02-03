@@ -4,7 +4,7 @@
 
 ### Secure, isolated VM environment for running OpenClaw agents
 
-[![Phase](https://img.shields.io/badge/Phase-S5%20Secrets-green?style=for-the-badge)](https://github.com/Peleke/openclaw-sandbox/issues)
+[![Phase](https://img.shields.io/badge/Phase-S6%20Telegram-green?style=for-the-badge)](https://github.com/Peleke/openclaw-sandbox/issues)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-macOS-blue?style=for-the-badge&logo=apple&logoColor=white)](https://lima-vm.io/)
 
@@ -155,6 +155,50 @@ EOF
 ./bootstrap.sh --delete
 ```
 
+## Telegram Integration
+
+The sandbox supports Telegram bot integration for ambient agent access:
+
+```bash
+# Add your bot token to secrets
+echo 'TELEGRAM_BOT_TOKEN=your-bot-token' >> ~/.openclaw-secrets.env
+
+# Re-provision to apply
+./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.openclaw-secrets.env
+```
+
+The provisioning automatically:
+- Sets `dmPolicy: "open"` with `allowFrom: ["*"]` (anyone can message)
+- Fixes workspace paths for Linux VM
+- Starts the gateway with Telegram long-polling enabled
+
+### Testing Telegram
+
+```bash
+# Check gateway status
+limactl shell openclaw-sandbox -- systemctl status openclaw-gateway
+
+# View Telegram activity
+limactl shell openclaw-sandbox -- tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | grep telegram
+
+# Check bot connection
+limactl shell openclaw-sandbox -- claw status
+```
+
+### Host CLI Setup
+
+To use `claw` commands from your Mac to the sandboxed gateway:
+
+```bash
+# Add to your shell profile (~/.zshrc)
+# Detects sandbox and routes to localhost
+source ~/.openclaw/dotfiles/env.sh
+
+# Then from host:
+claw status  # Shows sandbox gateway status
+claw tui     # Opens TUI connected to sandbox
+```
+
 ## Network Policy
 
 The VM firewall allows only:
@@ -192,9 +236,11 @@ Dependencies are installed automatically:
 | S2 | Done | Gateway deployment |
 | S3 | Done | Network containment (UFW) |
 | S4 | Done | Tailscale routing |
-| **S5** | **Done** | **Secrets management** |
-| S6 | Planned | Audit logging |
-| S7 | Planned | Multi-tenant |
+| S5 | Done | Secrets management |
+| **S6** | **Done** | **Telegram integration** |
+| S7 | Planned | Cadence (ambient signals) |
+| S8 | Planned | Audit logging |
+| S9 | Planned | Multi-tenant |
 
 ## Security Considerations
 
