@@ -4,7 +4,7 @@
 
 - name: Check if config file exists
   ansible.builtin.stat:
-    path: "{{ ansible_facts['env']['HOME'] }}/.openclaw/openclaw.json"
+    path: "{{ user_home }}/.openclaw/openclaw.json"
   register: config_file
 
 - name: Fix VM paths in config (if config exists)
@@ -12,7 +12,7 @@
   block:
     - name: Read current config
       ansible.builtin.slurp:
-        src: "{{ ansible_facts['env']['HOME'] }}/.openclaw/openclaw.json"
+        src: "{{ user_home }}/.openclaw/openclaw.json"
       register: config_content
 
     - name: Parse config
@@ -25,7 +25,7 @@
           {{ openclaw_config | combine({
             'agents': openclaw_config.agents | default({}) | combine({
               'defaults': (openclaw_config.agents.defaults | default({})) | combine({
-                'workspace': ansible_facts['env']['HOME'] + '/.openclaw/workspace'
+                'workspace': user_home + '/.openclaw/workspace'
               })
             })
           }, recursive=true) }}
@@ -47,12 +47,12 @@
     - name: Write fixed config
       ansible.builtin.copy:
         content: "{{ openclaw_config | to_nice_json }}"
-        dest: "{{ ansible_facts['env']['HOME'] }}/.openclaw/openclaw.json"
+        dest: "{{ user_home }}/.openclaw/openclaw.json"
         mode: "0640"
 
     - name: Create workspace directory
       ansible.builtin.file:
-        path: "{{ ansible_facts['env']['HOME'] }}/.openclaw/workspace"
+        path: "{{ user_home }}/.openclaw/workspace"
         state: directory
         mode: "0750"
 
@@ -60,5 +60,5 @@
       ansible.builtin.debug:
         msg: |
           Applied VM path fixes:
-          - workspace: {{ ansible_facts['env']['HOME'] }}/.openclaw/workspace
+          - workspace: {{ user_home }}/.openclaw/workspace
           - dmPolicy: open (with allowFrom: ["*"])

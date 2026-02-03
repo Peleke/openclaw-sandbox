@@ -2,6 +2,16 @@
 # Gateway Role - Phase S2
 # Installs Node.js, builds OpenClaw, and configures the gateway service
 
+# Get the actual user home directory (works with become: true at playbook level)
+- name: Get user home directory
+  ansible.builtin.shell: "getent passwd {{ ansible_user }} | cut -d: -f6"
+  register: user_home_result
+  changed_when: false
+
+- name: Set user_home fact
+  ansible.builtin.set_fact:
+    user_home: "{{ user_home_result.stdout }}"
+
 - name: Install prerequisites
   become: true
   ansible.builtin.apt:
@@ -53,7 +63,7 @@
 
 # Install bun for faster package management
 - name: Check if bun is installed
-  ansible.builtin.command: "{{ ansible_facts['env']['HOME'] }}/.bun/bin/bun --version"
+  ansible.builtin.command: "{{ user_home }}/.bun/bin/bun --version"
   register: bun_version
   changed_when: false
   failed_when: false
@@ -63,7 +73,7 @@
   ansible.builtin.shell: |
     curl -fsSL https://bun.sh/install | bash
   args:
-    creates: "{{ ansible_facts['env']['HOME'] }}/.bun/bin/bun"
+    creates: "{{ user_home }}/.bun/bin/bun"
 
 # Handle config/auth - link from mount or create fresh
 - name: Check if config mount exists
@@ -73,14 +83,14 @@
 
 - name: Check if ~/.openclaw exists
   ansible.builtin.stat:
-    path: "{{ ansible_facts['env']['HOME'] }}/.openclaw"
+    path: "{{ user_home }}/.openclaw"
   register: openclaw_config
 
 # Fix: Handle existing empty directory - replace with symlink if mount available
 - name: Check if ~/.openclaw is empty directory (not symlink)
   when: openclaw_config.stat.exists and openclaw_config.stat.isdir and not openclaw_config.stat.islnk
   ansible.builtin.find:
-    paths: "{{ ansible_facts['env']['HOME'] }}/.openclaw"
+    paths: "{{ user_home }}/.openclaw"
     file_type: any
   register: openclaw_config_contents
 
@@ -92,26 +102,26 @@
     not openclaw_config.stat.islnk and
     (openclaw_config_contents.matched | default(0)) == 0
   ansible.builtin.file:
-    path: "{{ ansible_facts['env']['HOME'] }}/.openclaw"
+    path: "{{ user_home }}/.openclaw"
     state: absent
 
 # Re-check after potential removal
 - name: Re-check ~/.openclaw after cleanup
   ansible.builtin.stat:
-    path: "{{ ansible_facts['env']['HOME'] }}/.openclaw"
+    path: "{{ user_home }}/.openclaw"
   register: openclaw_config_recheck
 
 - name: Link config from mount (if mounted and no existing config)
   when: config_mount.stat.exists and not openclaw_config_recheck.stat.exists
   ansible.builtin.file:
     src: /mnt/openclaw-config
-    dest: "{{ ansible_facts['env']['HOME'] }}/.openclaw"
+    dest: "{{ user_home }}/.openclaw"
     state: link
 
 - name: Create ~/.openclaw directory (if no mount and no existing)
   when: not config_mount.stat.exists and not openclaw_config_recheck.stat.exists
   ansible.builtin.file:
-    path: "{{ ansible_facts['env']['HOME'] }}/.openclaw"
+    path: "{{ user_home }}/.openclaw"
     state: directory
     mode: "0750"
 
@@ -166,7 +176,7 @@
 - name: Install OpenClaw dependencies (using bun)
   when: not node_modules_recheck.stat.exists
   ansible.builtin.shell: |
-    export PATH="{{ ansible_facts['env']['HOME'] }}/.bun/bin:$PATH"
+    export PATH="{{ user_home }}/.bun/bin:$PATH"
     cd /mnt/openclaw && bun install
     touch /mnt/openclaw/node_modules/.linux-installed
   register: bun_install_result
@@ -185,7 +195,7 @@
 - name: Build OpenClaw
   when: not dist_exists.stat.exists
   ansible.builtin.shell: |
-    export PATH="{{ ansible_facts['env']['HOME'] }}/.bun/bin:$PATH"
+    export PATH="{{ user_home }}/.bun/bin:$PATH"
     cd /mnt/openclaw && bun run build
   args:
     creates: /mnt/openclaw/dist/index.js
@@ -205,8 +215,8 @@
       Type=simple
       User={{ ansible_user }}
       WorkingDirectory=/mnt/openclaw
-      Environment=HOME={{ ansible_facts['env']['HOME'] }}
-      Environment=PATH={{ ansible_facts['env']['HOME'] }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
+      Environment=HOME={{ user_home }}
+      Environment=PATH={{ user_home }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
       # Load secrets from /etc/openclaw/secrets.env (- prefix = don't fail if missing)
       EnvironmentFile=-/etc/openclaw/secrets.env
       ExecStart=/usr/bin/node dist/index.js gateway --bind lan --port 18789 --allow-unconfigured
@@ -227,7 +237,7 @@
 # Check if onboard has been completed
 - name: Check if gateway is configured
   ansible.builtin.stat:
-    path: "{{ ansible_facts['env']['HOME'] }}/.openclaw/config.json"
+    path: "{{ user_home }}/.openclaw/config.json"
   register: gateway_config
 
 - name: Gateway configuration status

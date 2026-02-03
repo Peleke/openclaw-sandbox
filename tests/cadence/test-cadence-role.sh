@@ -39,7 +39,13 @@ log_info() {
 }
 
 vm_exec() {
-  limactl shell openclaw-sandbox -- "$@" 2>/dev/null
+  # Run command in VM via bash -c for proper tilde expansion
+  # Filter out Lima's cwd warnings while preserving exit code
+  local result
+  result=$(limactl shell openclaw-sandbox -- bash -c "$*" 2>&1)
+  local exit_code=$?
+  echo "$result" | grep -v "cd:.*No such file"
+  return $exit_code
 }
 
 vm_exec_sudo() {
@@ -76,7 +82,7 @@ else
 fi
 
 # Test: Bun installed
-if vm_exec test -f ~/.bun/bin/bun || vm_exec which bun >/dev/null 2>&1; then
+if vm_exec test -f \~/.bun/bin/bun || vm_exec which bun >/dev/null 2>&1; then
   log_pass "Bun installed"
 else
   log_skip "Bun not installed (run bootstrap.sh to provision)"
@@ -91,18 +97,18 @@ echo "▸ Configuration"
 echo ""
 
 # Test: cadence.json exists
-if vm_exec test -f ~/.openclaw/cadence.json; then
+if vm_exec test -f \~/.openclaw/cadence.json; then
   log_pass "cadence.json exists"
 
   # Test: cadence.json is valid JSON
-  if vm_exec cat ~/.openclaw/cadence.json | vm_exec jq . >/dev/null 2>&1; then
+  if vm_exec "jq . ~/.openclaw/cadence.json" >/dev/null 2>&1; then
     log_pass "cadence.json is valid JSON"
   else
     log_fail "cadence.json is invalid JSON"
   fi
 
   # Test: vaultPath is Linux path (not macOS)
-  VAULT_PATH=$(vm_exec cat ~/.openclaw/cadence.json | vm_exec jq -r '.vaultPath // empty')
+  VAULT_PATH=$(vm_exec "jq -r '.vaultPath // empty' ~/.openclaw/cadence.json")
   if [[ -n "$VAULT_PATH" ]]; then
     if [[ "$VAULT_PATH" == /Users/* ]]; then
       log_fail "vaultPath contains macOS path: $VAULT_PATH"
@@ -114,11 +120,11 @@ if vm_exec test -f ~/.openclaw/cadence.json; then
   fi
 
   # Test: delivery channel configured
-  DELIVERY_CHANNEL=$(vm_exec cat ~/.openclaw/cadence.json | vm_exec jq -r '.delivery.channel // "log"')
+  DELIVERY_CHANNEL=$(vm_exec "jq -r '.delivery.channel // \"log\"' ~/.openclaw/cadence.json")
   log_info "Delivery channel: $DELIVERY_CHANNEL"
 
   if [[ "$DELIVERY_CHANNEL" == "telegram" ]]; then
-    CHAT_ID=$(vm_exec cat ~/.openclaw/cadence.json | vm_exec jq -r '.delivery.telegramChatId // empty')
+    CHAT_ID=$(vm_exec "jq -r '.delivery.telegramChatId // empty' ~/.openclaw/cadence.json")
     if [[ -n "$CHAT_ID" ]]; then
       log_pass "Telegram chat ID configured"
     else
@@ -183,7 +189,7 @@ echo "▸ Runtime"
 echo ""
 
 # Check if cadence is enabled before checking service status
-CADENCE_ENABLED=$(vm_exec cat ~/.openclaw/cadence.json 2>/dev/null | vm_exec jq -r '.enabled // false')
+CADENCE_ENABLED=$(vm_exec "jq -r '.enabled // false' ~/.openclaw/cadence.json" 2>/dev/null)
 
 if [[ "$CADENCE_ENABLED" == "true" ]]; then
   # Test: Service is active (only if enabled)
@@ -258,7 +264,7 @@ if vm_exec test -f /mnt/openclaw/scripts/cadence.ts; then
   log_pass "cadence.ts script exists"
 
   # Test: Can run cadence status
-  if vm_exec bash -c 'cd /mnt/openclaw && ~/.bun/bin/bun scripts/cadence.ts status' >/dev/null 2>&1; then
+  if vm_exec bash -c 'cd /mnt/openclaw && \~/.bun/bin/bun scripts/cadence.ts status' >/dev/null 2>&1; then
     log_pass "cadence.ts status runs successfully"
   else
     log_fail "cadence.ts status failed"
