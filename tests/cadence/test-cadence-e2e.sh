@@ -46,11 +46,21 @@ log_step() {
 }
 
 vm_exec() {
-  limactl shell openclaw-sandbox -- "$@" 2>/dev/null
+  # Run command in VM, filtering Lima's cwd warnings while preserving exit code
+  local result exit_code
+  result=$(limactl shell openclaw-sandbox -- bash -c "$*" 2>&1)
+  exit_code=$?
+  # Use || true to prevent grep from failing when all lines are filtered
+  echo "$result" | grep -v "cd:.*No such file" || true
+  return $exit_code
 }
 
 vm_exec_sudo() {
-  limactl shell openclaw-sandbox -- sudo "$@" 2>/dev/null
+  local result exit_code
+  result=$(limactl shell openclaw-sandbox -- sudo bash -c "$*" 2>&1)
+  exit_code=$?
+  echo "$result" | grep -v "cd:.*No such file" || true
+  return $exit_code
 }
 
 echo ""
@@ -78,7 +88,7 @@ if ! vm_exec test -d /mnt/obsidian; then
 fi
 
 # Check cadence enabled
-CADENCE_ENABLED=$(vm_exec cat ~/.openclaw/cadence.json 2>/dev/null | vm_exec jq -r '.enabled // false')
+CADENCE_ENABLED=$(vm_exec "jq -r '.enabled // false' ~/.openclaw/cadence.json")
 if [[ "$CADENCE_ENABLED" != "true" ]]; then
   echo -e "${RED}Error:${NC} Cadence not enabled in config"
   echo "Edit ~/.openclaw/cadence.json and set \"enabled\": true"
@@ -109,10 +119,10 @@ bugs can slip through and cause issues in production.
 
 # Create test directory and file
 log_info "Creating test note at $TEST_FILE"
-vm_exec mkdir -p "$TEST_DIR"
-vm_exec bash -c "cat > '$TEST_FILE' << 'TESTEOF'
-$TEST_CONTENT
-TESTEOF"
+vm_exec "mkdir -p $TEST_DIR"
+
+# Use printf to write test content (more reliable than heredoc over SSH)
+vm_exec "printf '%s\n' '# E2E Test Note' '::publish' '' 'This is an automated test note created by the Cadence E2E test suite.' '' '## Key Insight' 'Testing is essential for maintaining code quality. Without comprehensive tests,' 'bugs can slip through and cause issues in production.' '' '## Action Items' '- Write more tests' '- Run tests before commits' '- Celebrate when tests pass' > $TEST_FILE"
 
 if vm_exec test -f "$TEST_FILE"; then
   log_pass "Test note created"
@@ -130,7 +140,7 @@ log_info "Waiting for file watcher to detect note (5s)..."
 sleep 5
 
 # Check cadence service logs for the file detection
-if vm_exec_sudo journalctl -u openclaw-cadence --since "1 minute ago" 2>/dev/null | grep -q "Note modified\|obsidian.note.modified"; then
+if vm_exec_sudo "journalctl -u openclaw-cadence --since '1 minute ago'" | grep -q "Note modified\|obsidian.note.modified"; then
   log_pass "File watcher detected note change"
 else
   # May not be running as service, check if interactive mode would work
@@ -150,7 +160,7 @@ log_step "Step 3: Test CLI Commands"
 
 # Test status command
 log_info "Running: cadence.ts status"
-if vm_exec bash -c 'cd /mnt/openclaw && ~/.bun/bin/bun scripts/cadence.ts status' 2>&1 | grep -q "Cadence Status\|Config:"; then
+if vm_exec 'cd /mnt/openclaw && ~/.bun/bin/bun scripts/cadence.ts status' 2>&1 | grep -q "Cadence Status\|Config:"; then
   log_pass "cadence.ts status works"
 else
   log_fail "cadence.ts status failed"
@@ -158,7 +168,7 @@ fi
 
 # Test that init doesn't overwrite existing config
 log_info "Running: cadence.ts init (should not overwrite)"
-INIT_OUTPUT=$(vm_exec bash -c 'cd /mnt/openclaw && ~/.bun/bin/bun scripts/cadence.ts init' 2>&1)
+INIT_OUTPUT=$(vm_exec 'cd /mnt/openclaw && ~/.bun/bin/bun scripts/cadence.ts init' 2>&1)
 if echo "$INIT_OUTPUT" | grep -q "already exists"; then
   log_pass "cadence.ts init preserves existing config"
 else
@@ -172,8 +182,8 @@ log_step "Step 4: Test Manual Digest Trigger"
 
 log_info "Triggering manual digest..."
 
-# Create trigger file
-TRIGGER_RESULT=$(vm_exec bash -c 'cd /mnt/openclaw && ~/.bun/bin/bun scripts/cadence.ts digest' 2>&1)
+# Trigger digest
+TRIGGER_RESULT=$(vm_exec 'cd /mnt/openclaw && ~/.bun/bin/bun scripts/cadence.ts digest' 2>&1)
 if echo "$TRIGGER_RESULT" | grep -q "trigger sent"; then
   log_pass "Digest trigger sent"
 else
@@ -186,27 +196,22 @@ fi
 # ============================================================
 log_step "Step 5: Verify Pipeline Components"
 
-# Check config has required fields
-CADENCE_CONFIG=$(vm_exec cat ~/.openclaw/cadence.json)
+# Check config has required fields - use jq in VM for all queries
 
 # vaultPath
-if echo "$CADENCE_CONFIG" | vm_exec jq -e '.vaultPath' >/dev/null 2>&1; then
-  VAULT_PATH=$(echo "$CADENCE_CONFIG" | vm_exec jq -r '.vaultPath')
-  if [[ -n "$VAULT_PATH" && "$VAULT_PATH" != "null" ]]; then
-    log_pass "vaultPath configured: $VAULT_PATH"
-  else
-    log_fail "vaultPath is empty"
-  fi
+VAULT_PATH=$(vm_exec "jq -r '.vaultPath // empty' ~/.openclaw/cadence.json")
+if [[ -n "$VAULT_PATH" && "$VAULT_PATH" != "null" ]]; then
+  log_pass "vaultPath configured: $VAULT_PATH"
 else
-  log_fail "vaultPath missing from config"
+  log_fail "vaultPath missing or empty"
 fi
 
 # delivery.channel
-DELIVERY=$(echo "$CADENCE_CONFIG" | vm_exec jq -r '.delivery.channel // "log"')
+DELIVERY=$(vm_exec "jq -r '.delivery.channel // \"log\"' ~/.openclaw/cadence.json")
 log_info "Delivery channel: $DELIVERY"
 
 if [[ "$DELIVERY" == "telegram" ]]; then
-  CHAT_ID=$(echo "$CADENCE_CONFIG" | vm_exec jq -r '.delivery.telegramChatId // empty')
+  CHAT_ID=$(vm_exec "jq -r '.delivery.telegramChatId // empty' ~/.openclaw/cadence.json")
   if [[ -n "$CHAT_ID" ]]; then
     log_pass "Telegram delivery configured (chat: $CHAT_ID)"
   else
@@ -217,10 +222,10 @@ elif [[ "$DELIVERY" == "log" ]]; then
 fi
 
 # schedule
-SCHEDULE_ENABLED=$(echo "$CADENCE_CONFIG" | vm_exec jq -r '.schedule.enabled // false')
+SCHEDULE_ENABLED=$(vm_exec "jq -r '.schedule.enabled // false' ~/.openclaw/cadence.json")
 if [[ "$SCHEDULE_ENABLED" == "true" ]]; then
-  NIGHTLY=$(echo "$CADENCE_CONFIG" | vm_exec jq -r '.schedule.nightlyDigest // "not set"')
-  MORNING=$(echo "$CADENCE_CONFIG" | vm_exec jq -r '.schedule.morningStandup // "not set"')
+  NIGHTLY=$(vm_exec "jq -r '.schedule.nightlyDigest // \"not set\"' ~/.openclaw/cadence.json")
+  MORNING=$(vm_exec "jq -r '.schedule.morningStandup // \"not set\"' ~/.openclaw/cadence.json")
   log_pass "Schedule enabled (nightly: $NIGHTLY, morning: $MORNING)"
 else
   log_info "Schedule disabled (manual trigger only)"
