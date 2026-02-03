@@ -220,6 +220,20 @@ if vm_exec_sudo test -f /etc/openclaw/secrets.env; then
   # Test: Has Anthropic API key (needed for insight extraction)
   if vm_exec_sudo grep -q "ANTHROPIC_API_KEY" /etc/openclaw/secrets.env; then
     log_pass "Anthropic API key configured"
+
+    # Test: auth-profiles.json exists (OpenClaw uses this, not env vars directly)
+    if vm_exec test -f \~/.openclaw/agents/main/agent/auth-profiles.json; then
+      log_pass "LLM auth-profiles.json exists"
+
+      # Test: auth-profiles.json has anthropic profile
+      if vm_exec "jq -e '.profiles | keys | .[] | select(. | test(\"anthropic\"))' ~/.openclaw/agents/main/agent/auth-profiles.json" >/dev/null 2>&1; then
+        log_pass "Anthropic profile configured in auth-profiles.json"
+      else
+        log_fail "No anthropic profile in auth-profiles.json"
+      fi
+    else
+      log_fail "LLM auth-profiles.json missing (cadence LLM will fail)"
+    fi
   else
     log_skip "Anthropic API key not set (required for LLM extraction)"
   fi

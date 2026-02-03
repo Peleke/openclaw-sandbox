@@ -95,6 +95,60 @@
       ansible.builtin.debug:
         msg: "Fixed cadence vault path: {{ cadence_current.vaultPath }} → {{ cadence_vault_path }}"
 
+# Setup LLM auth for Cadence (OpenClaw uses auth-profiles.json, not env vars directly)
+- name: Check if secrets.env has ANTHROPIC_API_KEY
+  ansible.builtin.shell: "grep -q '^ANTHROPIC_API_KEY=' /etc/openclaw/secrets.env 2>/dev/null"
+  register: has_anthropic_key
+  changed_when: false
+  failed_when: false
+
+- name: Create agent auth directory
+  when: has_anthropic_key.rc == 0
+  ansible.builtin.file:
+    path: "{{ user_home }}/.openclaw/agents/main/agent"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+
+- name: Check if auth-profiles.json exists
+  ansible.builtin.stat:
+    path: "{{ user_home }}/.openclaw/agents/main/agent/auth-profiles.json"
+  register: auth_profiles_exists
+
+- name: Get Anthropic API key from secrets
+  when: has_anthropic_key.rc == 0 and not auth_profiles_exists.stat.exists
+  ansible.builtin.shell: "grep '^ANTHROPIC_API_KEY=' /etc/openclaw/secrets.env | cut -d'=' -f2"
+  register: anthropic_key_result
+  changed_when: false
+
+- name: Create auth-profiles.json for LLM access
+  when: has_anthropic_key.rc == 0 and not auth_profiles_exists.stat.exists
+  ansible.builtin.copy:
+    dest: "{{ user_home }}/.openclaw/agents/main/agent/auth-profiles.json"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0600"
+    content: |
+      {
+        "version": 1,
+        "profiles": {
+          "anthropic-sandbox": {
+            "type": "api_key",
+            "provider": "anthropic",
+            "key": "{{ anthropic_key_result.stdout }}"
+          }
+        }
+      }
+
+- name: Warn if no Anthropic API key
+  when: has_anthropic_key.rc != 0
+  ansible.builtin.debug:
+    msg: |
+      ⚠️  No ANTHROPIC_API_KEY in /etc/openclaw/secrets.env
+      Cadence LLM extraction will not work without it.
+      Add your API key to the secrets file on the host.
+
 # Create systemd service for persistent cadence
 - name: Create cadence systemd service
   become: true
