@@ -1,0 +1,244 @@
+<div align="center">
+
+# OpenClaw Sandbox
+
+### Secure, isolated VM environment for running OpenClaw agents
+
+[![Phase](https://img.shields.io/badge/Phase-S5%20Secrets-green?style=for-the-badge)](https://github.com/Peleke/openclaw-sandbox/issues)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![Platform](https://img.shields.io/badge/Platform-macOS-blue?style=for-the-badge&logo=apple&logoColor=white)](https://lima-vm.io/)
+
+**Run AI agents with network containment, audit trails, and secrets management.**
+
+<img src="assets/hero-banner.png" alt="OpenClaw Sandbox - Secure VM environment for AI agents" width="800"/>
+
+</div>
+
+---
+
+## The Problem
+
+Running AI agents on your host machine is risky:
+- Agents can access sensitive files, credentials, and configs
+- Network traffic is unrestricted
+- No isolation between agent and host processes
+- Secrets end up in environment variables, logs, and shell history
+
+**OpenClaw Sandbox** solves this by running agents inside a hardened Linux VM with strict network policies and secure secrets handling.
+
+## Features
+
+- **Network Containment** - UFW firewall with explicit allowlist (only HTTPS, DNS, Tailscale)
+- **Secrets Management** - Multiple injection methods, never in logs or process lists
+- **Tailscale Integration** - Route to your private network via host
+- **Zero-Config Deploy** - Single command bootstrap from macOS
+- **Host Mounts** - Bidirectional sync for your codebase and vaults
+
+## Quick Start
+
+```bash
+# Clone and run
+git clone https://github.com/Peleke/openclaw-sandbox.git
+cd openclaw-sandbox
+
+# Bootstrap with your OpenClaw repo and secrets
+./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.openclaw-secrets.env
+
+# Access the VM
+limactl shell openclaw-sandbox
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         macOS Host                               │
+│                                                                  │
+│   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐      │
+│   │  OpenClaw   │     │   Secrets   │     │  Obsidian   │      │
+│   │    Repo     │     │    File     │     │   Vault     │      │
+│   └──────┬──────┘     └──────┬──────┘     └──────┬──────┘      │
+│          │                   │                   │              │
+│          │  Lima mounts      │                   │              │
+│          ▼                   ▼                   ▼              │
+│   ╔═══════════════════════════════════════════════════════╗    │
+│   ║                 Ubuntu 24.04 VM                        ║    │
+│   ║  ┌─────────────────────────────────────────────────┐  ║    │
+│   ║  │  /mnt/openclaw  /mnt/secrets  /mnt/obsidian     │  ║    │
+│   ║  └─────────────────────────────────────────────────┘  ║    │
+│   ║                                                        ║    │
+│   ║  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  ║    │
+│   ║  │   Gateway    │  │   Firewall   │  │  Tailscale │  ║    │
+│   ║  │  :18789      │  │     UFW      │  │   Routing  │  ║    │
+│   ║  └──────────────┘  └──────────────┘  └────────────┘  ║    │
+│   ║                                                        ║    │
+│   ║  ┌─────────────────────────────────────────────────┐  ║    │
+│   ║  │         /etc/openclaw/secrets.env               │  ║    │
+│   ║  │         (mode 0600, service user only)          │  ║    │
+│   ║  └─────────────────────────────────────────────────┘  ║    │
+│   ╚═══════════════════════════════════════════════════════╝    │
+│                              │                                   │
+│                              ▼                                   │
+│                      localhost:18789                             │
+│                    (Gateway API access)                          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Secrets Management
+
+Three ways to provide secrets, in priority order:
+
+### 1. Direct Injection (CI/CD, testing)
+
+```bash
+./bootstrap.sh --openclaw ../openclaw \
+  -e "secrets_anthropic_api_key=sk-ant-xxx" \
+  -e "secrets_gateway_password=mypass"
+```
+
+### 2. Secrets File (recommended for dev)
+
+```bash
+# Create secrets file
+cat > ~/.openclaw-secrets.env << 'EOF'
+ANTHROPIC_API_KEY=sk-ant-xxx
+OPENAI_API_KEY=sk-xxx
+OPENCLAW_GATEWAY_PASSWORD=mypass
+EOF
+
+# Bootstrap with secrets
+./bootstrap.sh --openclaw ../openclaw --secrets ~/.openclaw-secrets.env
+```
+
+### 3. Config Mount (full OpenClaw config)
+
+```bash
+./bootstrap.sh --openclaw ../openclaw --config ~/.openclaw
+```
+
+### Supported Secrets
+
+| Variable | Description |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Claude API key |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `GEMINI_API_KEY` | Google Gemini API key |
+| `OPENROUTER_API_KEY` | OpenRouter API key |
+| `OPENCLAW_GATEWAY_PASSWORD` | Gateway auth password |
+| `OPENCLAW_GATEWAY_TOKEN` | Gateway auth token |
+| `SLACK_BOT_TOKEN` | Slack integration |
+| `DISCORD_BOT_TOKEN` | Discord integration |
+| `TELEGRAM_BOT_TOKEN` | Telegram integration |
+
+## Usage
+
+```bash
+# Full bootstrap (creates VM if needed)
+./bootstrap.sh --openclaw ~/Projects/openclaw
+
+# With secrets
+./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.secrets.env
+
+# With Obsidian vault
+./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
+
+# Open VM shell
+./bootstrap.sh --shell
+
+# Run interactive onboard
+./bootstrap.sh --onboard
+
+# Stop VM
+./bootstrap.sh --kill
+
+# Delete VM completely
+./bootstrap.sh --delete
+```
+
+## Network Policy
+
+The VM firewall allows only:
+
+| Direction | Port | Protocol | Purpose |
+|-----------|------|----------|---------|
+| **IN** | 18789 | TCP | Gateway API |
+| **IN** | 22 | TCP | SSH/Ansible |
+| **OUT** | 443 | TCP | HTTPS (LLM APIs) |
+| **OUT** | 80 | TCP | HTTP (apt updates) |
+| **OUT** | 53 | UDP/TCP | DNS |
+| **OUT** | 100.64.0.0/10 | * | Tailscale |
+| **OUT** | 41641 | UDP | Tailscale direct |
+| **OUT** | 123 | UDP | NTP |
+
+All other traffic is **denied and logged**.
+
+## Requirements
+
+- macOS with Apple Silicon or Intel
+- [Homebrew](https://brew.sh/)
+- ~10GB disk space
+
+Dependencies are installed automatically:
+- [Lima](https://lima-vm.io/) - Linux VM manager
+- [Ansible](https://www.ansible.com/) - Configuration management
+- [jq](https://jqlang.github.io/jq/) - JSON processor
+- [Tailscale](https://tailscale.com/) - (optional) private networking
+
+## Development Phases
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| S1 | Done | Lima VM bootstrap |
+| S2 | Done | Gateway deployment |
+| S3 | Done | Network containment (UFW) |
+| S4 | Done | Tailscale routing |
+| **S5** | **Done** | **Secrets management** |
+| S6 | Planned | Audit logging |
+| S7 | Planned | Multi-tenant |
+
+## Security Considerations
+
+1. **Secrets never logged** - All Ansible tasks use `no_log: true`
+2. **File permissions** - `/etc/openclaw/secrets.env` is `0600`
+3. **No process exposure** - Using `EnvironmentFile=` not `Environment=`
+4. **Network isolation** - Explicit allowlist, all else denied
+5. **No external deps** - No 1Password, no SOPS, just files
+
+## Troubleshooting
+
+### Check VM status
+```bash
+limactl list
+```
+
+### View gateway logs
+```bash
+limactl shell openclaw-sandbox -- sudo journalctl -u openclaw-gateway -f
+```
+
+### Check firewall rules
+```bash
+limactl shell openclaw-sandbox -- sudo ufw status verbose
+```
+
+### Verify secrets loaded
+```bash
+limactl shell openclaw-sandbox -- sudo cat /etc/openclaw/secrets.env
+```
+
+### Test Tailscale routing
+```bash
+limactl shell openclaw-sandbox -- ~/test-tailscale.sh 100.x.x.x
+```
+
+## Contributing
+
+1. Fork the repo
+2. Create a feature branch
+3. Make changes
+4. Run tests: `./bootstrap.sh --openclaw ../openclaw --secrets /tmp/test.env`
+5. Open a PR
+
+## License
+
+MIT License. See [LICENSE](./LICENSE).
