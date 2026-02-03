@@ -4,7 +4,7 @@
 
 ### Secure, isolated VM environment for running OpenClaw agents
 
-[![Phase](https://img.shields.io/badge/Phase-S6%20Telegram-green?style=for-the-badge)](https://github.com/Peleke/openclaw-sandbox/issues)
+[![Phase](https://img.shields.io/badge/Phase-S7%20Cadence-green?style=for-the-badge)](https://github.com/Peleke/openclaw-sandbox/issues)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-macOS-blue?style=for-the-badge&logo=apple&logoColor=white)](https://lima-vm.io/)
 
@@ -185,6 +185,63 @@ limactl shell openclaw-sandbox -- tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%
 limactl shell openclaw-sandbox -- claw status
 ```
 
+## Cadence Integration
+
+Cadence is the ambient AI pipeline that watches your Obsidian vault and delivers insights to Telegram:
+
+```
+┌──────────────┐     ┌─────────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Obsidian   │────▶│  Insight        │────▶│  Insight     │────▶│  Telegram    │
+│   Watcher    │     │  Extractor      │     │  Digest      │     │  Delivery    │
+│              │     │  (LLM)          │     │  (Batching)  │     │              │
+└──────────────┘     └─────────────────┘     └──────────────┘     └──────────────┘
+```
+
+### Setup
+
+```bash
+# Bootstrap with vault mounted
+./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main --secrets ~/.secrets.env
+
+# Configure cadence
+limactl shell openclaw-sandbox -- nano ~/.openclaw/cadence.json
+```
+
+Edit `cadence.json`:
+```json
+{
+  "enabled": true,
+  "vaultPath": "/mnt/obsidian",
+  "delivery": {
+    "channel": "telegram",
+    "telegramChatId": "YOUR_CHAT_ID"
+  },
+  "schedule": {
+    "enabled": true,
+    "nightlyDigest": "21:00",
+    "morningStandup": "08:00"
+  }
+}
+```
+
+### Usage
+
+```bash
+# Start cadence service
+limactl shell openclaw-sandbox -- sudo systemctl start openclaw-cadence
+
+# Check status
+limactl shell openclaw-sandbox -- sudo systemctl status openclaw-cadence
+
+# View logs
+limactl shell openclaw-sandbox -- sudo journalctl -u openclaw-cadence -f
+
+# Manual digest trigger
+limactl shell openclaw-sandbox -- bun /mnt/openclaw/scripts/cadence.ts digest
+```
+
+Write journal entries with `::publish` on line 2 (after the title) to mark them for insight extraction.
+
 ### Host CLI Setup
 
 To use `claw` commands from your Mac to the sandboxed gateway:
@@ -237,8 +294,8 @@ Dependencies are installed automatically:
 | S3 | Done | Network containment (UFW) |
 | S4 | Done | Tailscale routing |
 | S5 | Done | Secrets management |
-| **S6** | **Done** | **Telegram integration** |
-| S7 | Planned | Cadence (ambient signals) |
+| S6 | Done | Telegram integration |
+| **S7** | **Done** | **Cadence (ambient signals)** |
 | S8 | Planned | Audit logging |
 | S9 | Planned | Multi-tenant |
 

@@ -57,6 +57,10 @@
     - role: tailscale
       tags: [tailscale]
 
+    # Phase S7: Cadence ambient pipeline
+    - role: cadence
+      tags: [cadence]
+
   post_tasks:
     - name: Display completion message
       ansible.builtin.debug:

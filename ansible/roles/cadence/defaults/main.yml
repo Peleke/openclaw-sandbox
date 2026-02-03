@@ -1,0 +1,37 @@
+---
+# Cadence Role Defaults - Phase S7
+# Ambient AI pipeline for journal → insight → delivery
+
+# Enable cadence pipeline
+cadence_enabled: false
+
+# Vault path inside VM (mounted from host)
+cadence_vault_path: "/mnt/obsidian"
+
+# Delivery channel: telegram, discord, log
+cadence_delivery_channel: "telegram"
+
+# Telegram chat ID for delivery (required if channel=telegram)
+cadence_telegram_chat_id: ""
+
+# LLM settings
+cadence_llm_provider: "anthropic"
+cadence_llm_model: "claude-3-5-haiku-latest"
+
+# Schedule settings
+cadence_schedule_enabled: true
+cadence_nightly_digest: "21:00"
+cadence_morning_standup: "08:00"
+cadence_timezone: "America/New_York"
+
+# Content pillars
+cadence_pillars:
+  - id: "tech"
+    name: "Technology"
+    keywords: ["code", "software", "ai", "engineering"]
+  - id: "business"
+    name: "Business"
+    keywords: ["startup", "strategy", "growth"]
+  - id: "life"
+    name: "Life"
+    keywords: ["reflection", "learning", "health"]
