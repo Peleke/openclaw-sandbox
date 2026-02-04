@@ -91,75 +91,107 @@
     group: "{{ ansible_user }}"
     mode: "0750"
 
-# Register buildlog MCP server
-- name: Check if Claude settings.json exists
-  when: buildlog_register_mcp
+# ============================================================================
+# CLAUDE.md Setup (3-step process)
+# 1. Copy from host OR create minimal default
+# 2. Run buildlog init-mcp --global (appends buildlog instructions)
+# 3. Append our sandbox-specific aggressive notes
+# ============================================================================
+
+# Step 1: Check if host provided a CLAUDE.md (copied to provision mount)
+- name: Check if host CLAUDE.md was provided
   ansible.builtin.stat:
-    path: "{{ user_home }}/.claude/settings.json"
-  register: claude_settings
+    path: "{{ buildlog_host_claude_md_path }}"
+  register: host_claude_md
 
-- name: Create Claude settings.json with buildlog MCP
-  when: buildlog_register_mcp and not claude_settings.stat.exists
+- name: Check if CLAUDE.md already exists in VM
+  ansible.builtin.stat:
+    path: "{{ user_home }}/.claude/CLAUDE.md"
+  register: existing_claude_md
+
+# Copy host CLAUDE.md if provided
+- name: Copy host CLAUDE.md to VM
+  when: host_claude_md.stat.exists and not existing_claude_md.stat.exists
   ansible.builtin.copy:
-    dest: "{{ user_home }}/.claude/settings.json"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
-    mode: "0640"
-    content: |
-      {
-        "mcpServers": {
-          "buildlog": {
-            "command": "{{ user_home }}/.local/bin/buildlog-mcp"
-          }
-        }
-      }
-
-- name: Read existing Claude settings
-  when: buildlog_register_mcp and claude_settings.stat.exists
-  ansible.builtin.slurp:
-    src: "{{ user_home }}/.claude/settings.json"
-  register: existing_claude_settings
-
-- name: Parse existing settings
-  when: buildlog_register_mcp and claude_settings.stat.exists
-  ansible.builtin.set_fact:
-    claude_settings_parsed: "{{ existing_claude_settings.content | b64decode | from_json }}"
-
-- name: Add buildlog MCP to existing settings
-  when: >
-    buildlog_register_mcp and
-    claude_settings.stat.exists and
-    (claude_settings_parsed.mcpServers is not defined or
-     claude_settings_parsed.mcpServers.buildlog is not defined)
-  block:
-    - name: Merge buildlog MCP into settings
-      ansible.builtin.set_fact:
-        claude_settings_updated: >-
-          {{ claude_settings_parsed | combine({
-            'mcpServers': (claude_settings_parsed.mcpServers | default({})) | combine({
-              'buildlog': {
-                'command': user_home + '/.local/bin/buildlog-mcp'
-              }
-            })
-          }, recursive=true) }}
-
-    - name: Write updated Claude settings
-      ansible.builtin.copy:
-        content: "{{ claude_settings_updated | to_nice_json }}"
-        dest: "{{ user_home }}/.claude/settings.json"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
-        mode: "0640"
-
-# Create CLAUDE.md with buildlog instructions
-- name: Create CLAUDE.md with buildlog instructions
-  when: buildlog_create_claude_md
-  ansible.builtin.template:
-    src: CLAUDE.md.j2
+    src: "{{ buildlog_host_claude_md_path }}"
     dest: "{{ user_home }}/.claude/CLAUDE.md"
     owner: "{{ ansible_user }}"
     group: "{{ ansible_user }}"
     mode: "0640"
+    remote_src: true
+
+# Create minimal default if no host CLAUDE.md and none exists
+- name: Create minimal default CLAUDE.md
+  when: not host_claude_md.stat.exists and not existing_claude_md.stat.exists
+  ansible.builtin.template:
+    src: CLAUDE.md.default.j2
+    dest: "{{ user_home }}/.claude/CLAUDE.md"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0640"
+
+# Step 2: Run buildlog init-mcp --global (appends buildlog's standard instructions)
+- name: Run buildlog init-mcp to register MCP and update CLAUDE.md
+  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog init-mcp --global"
+  environment:
+    HOME: "{{ user_home }}"
+  register: buildlog_init_mcp
+  changed_when: "'already registered' not in buildlog_init_mcp.stdout"
+
+- name: Display buildlog init-mcp result
+  ansible.builtin.debug:
+    msg: "{{ buildlog_init_mcp.stdout }}"
+
+# Step 3: Append our sandbox-specific aggressive notes
+- name: Check if sandbox notes already appended
+  ansible.builtin.command: grep -q "OPENCLAW SANDBOX BUILDLOG POLICY" "{{ user_home }}/.claude/CLAUDE.md"
+  register: sandbox_notes_check
+  changed_when: false
+  failed_when: false
+
+- name: Append sandbox-specific buildlog notes
+  when: sandbox_notes_check.rc != 0
+  ansible.builtin.blockinfile:
+    path: "{{ user_home }}/.claude/CLAUDE.md"
+    marker: "<!-- {mark} OPENCLAW SANDBOX BUILDLOG POLICY -->"
+    block: |
+
+      ## OpenClaw Sandbox: AGGRESSIVE buildlog Usage
+
+      **This sandbox is configured for maximum buildlog integration. USE IT FOR EVERYTHING.**
+
+      ### MANDATORY Core Loop
+
+      After EVERY commit, refactor, or significant code change:
+
+      1. `buildlog_overview()` — check project state
+      2. `buildlog_commit(message="...")` — ALWAYS use instead of raw git commit
+      3. `buildlog_gauntlet_rules()` — load reviewer personas
+      4. `buildlog_gauntlet_issues([...])` — log any findings
+      5. `buildlog_log_reward(outcome="accepted"|"rejected")` — close the feedback loop
+
+      ### When to Use (Be Aggressive)
+
+      | Situation | Action |
+      |-----------|--------|
+      | Starting any session | `buildlog_overview()` |
+      | Making ANY git commit | `buildlog_commit()` (NOT raw git) |
+      | Finishing a feature/fix | `buildlog_gauntlet_loop()` |
+      | Something works well | `buildlog_log_reward(outcome="accepted")` |
+      | Something fails/breaks | `buildlog_log_reward(outcome="rejected")` + `buildlog_log_mistake()` |
+      | Unsure about a pattern | Check `buildlog_skills()` |
+      | Starting new work | `buildlog_entry_new(slug)` |
+
+      **Philosophy:** Every decision, every outcome, every correction should be captured.
+      Without capture, there is no learning. The sandbox is isolated — capture everything.
+
+      ### Sandbox Environment
+
+      - **VM**: Ubuntu 24.04 via Lima (isolated from host)
+      - **Network**: UFW firewall with explicit allowlist
+      - **Secrets**: `/etc/openclaw/secrets.env` (0600, never in logs)
+      - **OpenClaw**: `/mnt/openclaw`
+      - **Vault**: `/mnt/obsidian` (if mounted)
 
 # Test MCP server
 - name: Test buildlog MCP availability
@@ -186,8 +218,13 @@
       buildlog installed and configured!
 
       Version: {{ buildlog_version_result.stdout }}
-      MCP Server: {{ user_home }}/.local/bin/buildlog-mcp
+      MCP Server: registered via init-mcp --global
       CLAUDE.md: {{ user_home }}/.claude/CLAUDE.md
+        {% if host_claude_md.stat.exists %}
+        (copied from host + buildlog + sandbox notes)
+        {% else %}
+        (default + buildlog + sandbox notes)
+        {% endif %}
 
       Commands (from VM):
         buildlog overview     # check state
@@ -195,6 +232,5 @@
         buildlog commit -m "" # wrap git commits
         buildlog skills       # render to agent files
 
-      The MCP server is registered in Claude settings.
-      Claude Code will now have access to all 29 buildlog tools.
+      Claude Code now has access to all buildlog MCP tools.
       ════════════════════════════════════════════════════════

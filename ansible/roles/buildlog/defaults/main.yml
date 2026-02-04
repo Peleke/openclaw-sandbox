@@ -7,8 +7,6 @@ buildlog_version: ""
 # Install extras for LLM-backed extraction
 buildlog_extras: "anthropic"
 
-# Create CLAUDE.md with aggressive buildlog instructions
-buildlog_create_claude_md: true
-
-# MCP server registration
-buildlog_register_mcp: true
+# Path where host CLAUDE.md is copied (via bootstrap.sh --claude-md)
+# If this file exists, it's used as the base CLAUDE.md
+buildlog_host_claude_md_path: "/mnt/provision/CLAUDE.md"
