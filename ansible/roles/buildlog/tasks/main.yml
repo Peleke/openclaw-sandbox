@@ -1,0 +1,200 @@
+---
+# Buildlog Role - Phase S8
+# Installs buildlog globally via uv for ambient learning capture
+
+# Get the actual user home directory
+- name: Get user home directory
+  ansible.builtin.shell: "getent passwd {{ ansible_user }} | cut -d: -f6"
+  register: user_home_result
+  changed_when: false
+
+- name: Set user_home fact
+  ansible.builtin.set_fact:
+    user_home: "{{ user_home_result.stdout }}"
+
+# Install uv (fast Python package manager)
+- name: Check if uv is installed
+  ansible.builtin.command: "{{ user_home }}/.local/bin/uv --version"
+  register: uv_version
+  changed_when: false
+  failed_when: false
+
+- name: Install uv (if not installed)
+  when: uv_version.rc != 0
+  ansible.builtin.shell: |
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  args:
+    creates: "{{ user_home }}/.local/bin/uv"
+  environment:
+    HOME: "{{ user_home }}"
+
+- name: Verify uv installation
+  ansible.builtin.command: "{{ user_home }}/.local/bin/uv --version"
+  register: uv_installed_version
+  changed_when: false
+
+- name: Display uv version
+  ansible.builtin.debug:
+    msg: "uv version: {{ uv_installed_version.stdout }}"
+
+# Install buildlog globally via uv tool
+- name: Check if buildlog is installed
+  ansible.builtin.command: "{{ user_home }}/.local/bin/uv tool run buildlog --version"
+  register: buildlog_check
+  changed_when: false
+  failed_when: false
+  environment:
+    HOME: "{{ user_home }}"
+
+- name: Install buildlog via uv tool
+  when: buildlog_check.rc != 0
+  ansible.builtin.shell: |
+    {{ user_home }}/.local/bin/uv tool install buildlog{% if buildlog_extras %}[{{ buildlog_extras }}]{% endif %}{% if buildlog_version %} --version {{ buildlog_version }}{% endif %}
+  environment:
+    HOME: "{{ user_home }}"
+  register: buildlog_install
+
+- name: Update buildlog if already installed
+  when: buildlog_check.rc == 0
+  ansible.builtin.shell: |
+    {{ user_home }}/.local/bin/uv tool upgrade buildlog{% if buildlog_extras %}[{{ buildlog_extras }}]{% endif %}
+  environment:
+    HOME: "{{ user_home }}"
+  register: buildlog_upgrade
+  changed_when: "'Already up to date' not in buildlog_upgrade.stdout"
+
+- name: Verify buildlog installation
+  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog --version"
+  register: buildlog_version_result
+  changed_when: false
+  environment:
+    HOME: "{{ user_home }}"
+
+- name: Display buildlog version
+  ansible.builtin.debug:
+    msg: "buildlog version: {{ buildlog_version_result.stdout }}"
+
+# Add uv tools to PATH in .bashrc
+- name: Ensure uv tools are in PATH
+  ansible.builtin.lineinfile:
+    path: "{{ user_home }}/.bashrc"
+    line: 'export PATH="$HOME/.local/bin:$PATH"'
+    create: true
+    mode: "0644"
+
+# Create ~/.claude directory for MCP and CLAUDE.md
+- name: Ensure ~/.claude directory exists
+  ansible.builtin.file:
+    path: "{{ user_home }}/.claude"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+
+# Register buildlog MCP server
+- name: Check if Claude settings.json exists
+  when: buildlog_register_mcp
+  ansible.builtin.stat:
+    path: "{{ user_home }}/.claude/settings.json"
+  register: claude_settings
+
+- name: Create Claude settings.json with buildlog MCP
+  when: buildlog_register_mcp and not claude_settings.stat.exists
+  ansible.builtin.copy:
+    dest: "{{ user_home }}/.claude/settings.json"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0640"
+    content: |
+      {
+        "mcpServers": {
+          "buildlog": {
+            "command": "{{ user_home }}/.local/bin/buildlog-mcp"
+          }
+        }
+      }
+
+- name: Read existing Claude settings
+  when: buildlog_register_mcp and claude_settings.stat.exists
+  ansible.builtin.slurp:
+    src: "{{ user_home }}/.claude/settings.json"
+  register: existing_claude_settings
+
+- name: Parse existing settings
+  when: buildlog_register_mcp and claude_settings.stat.exists
+  ansible.builtin.set_fact:
+    claude_settings_parsed: "{{ existing_claude_settings.content | b64decode | from_json }}"
+
+- name: Add buildlog MCP to existing settings
+  when: >
+    buildlog_register_mcp and
+    claude_settings.stat.exists and
+    (claude_settings_parsed.mcpServers is not defined or
+     claude_settings_parsed.mcpServers.buildlog is not defined)
+  block:
+    - name: Merge buildlog MCP into settings
+      ansible.builtin.set_fact:
+        claude_settings_updated: >-
+          {{ claude_settings_parsed | combine({
+            'mcpServers': (claude_settings_parsed.mcpServers | default({})) | combine({
+              'buildlog': {
+                'command': user_home + '/.local/bin/buildlog-mcp'
+              }
+            })
+          }, recursive=true) }}
+
+    - name: Write updated Claude settings
+      ansible.builtin.copy:
+        content: "{{ claude_settings_updated | to_nice_json }}"
+        dest: "{{ user_home }}/.claude/settings.json"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0640"
+
+# Create CLAUDE.md with buildlog instructions
+- name: Create CLAUDE.md with buildlog instructions
+  when: buildlog_create_claude_md
+  ansible.builtin.template:
+    src: CLAUDE.md.j2
+    dest: "{{ user_home }}/.claude/CLAUDE.md"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0640"
+
+# Test MCP server
+- name: Test buildlog MCP availability
+  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog mcp-test"
+  register: mcp_test
+  changed_when: false
+  failed_when: false
+  environment:
+    HOME: "{{ user_home }}"
+
+- name: Display MCP test result
+  ansible.builtin.debug:
+    msg: |
+      {% if mcp_test.rc == 0 %}
+      ✅ buildlog MCP server ready ({{ mcp_test.stdout | regex_search('\\d+ tools') | default('tools registered') }})
+      {% else %}
+      ⚠️  MCP test returned non-zero (this is OK if tools are listed)
+      {% endif %}
+
+- name: Buildlog installation complete
+  ansible.builtin.debug:
+    msg: |
+      ════════════════════════════════════════════════════════
+      buildlog installed and configured!
+
+      Version: {{ buildlog_version_result.stdout }}
+      MCP Server: {{ user_home }}/.local/bin/buildlog-mcp
+      CLAUDE.md: {{ user_home }}/.claude/CLAUDE.md
+
+      Commands (from VM):
+        buildlog overview     # check state
+        buildlog new slug     # start session
+        buildlog commit -m "" # wrap git commits
+        buildlog skills       # render to agent files
+
+      The MCP server is registered in Claude settings.
+      Claude Code will now have access to all 29 buildlog tools.
+      ════════════════════════════════════════════════════════

@@ -61,6 +61,10 @@
     - role: cadence
       tags: [cadence]
 
+    # Phase S8: buildlog ambient learning
+    - role: buildlog
+      tags: [buildlog]
+
   post_tasks:
     - name: Display completion message
       ansible.builtin.debug:

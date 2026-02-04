@@ -1,0 +1,14 @@
+---
+# Buildlog Role Defaults
+
+# Package version (empty = latest)
+buildlog_version: ""
+
+# Install extras for LLM-backed extraction
+buildlog_extras: "anthropic"
+
+# Create CLAUDE.md with aggressive buildlog instructions
+buildlog_create_claude_md: true
+
+# MCP server registration
+buildlog_register_mcp: true
