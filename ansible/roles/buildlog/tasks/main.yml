@@ -38,8 +38,8 @@
     msg: "uv version: {{ uv_installed_version.stdout }}"
 
 # Install buildlog globally via uv tool
-- name: Check if buildlog is installed
-  ansible.builtin.command: "{{ user_home }}/.local/bin/uv tool run buildlog --version"
+- name: Check if buildlog is installed as uv tool
+  ansible.builtin.shell: "{{ user_home }}/.local/bin/uv tool list | grep -q '^buildlog '"
   register: buildlog_check
   changed_when: false
   failed_when: false
@@ -62,6 +62,7 @@
     HOME: "{{ user_home }}"
   register: buildlog_upgrade
   changed_when: "'Already up to date' not in buildlog_upgrade.stdout"
+  failed_when: false
 
 - name: Verify buildlog installation
   ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog --version"
@@ -132,7 +133,7 @@
 
 # Step 2: Run buildlog init-mcp --global (appends buildlog's standard instructions)
 - name: Run buildlog init-mcp to register MCP and update CLAUDE.md
-  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog init-mcp --global"
+  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog init-mcp --global -y"
   environment:
     HOME: "{{ user_home }}"
   register: buildlog_init_mcp
