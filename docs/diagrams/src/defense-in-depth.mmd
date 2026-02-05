@@ -1,0 +1,37 @@
+graph TB
+    AGENT["AI Agent Request"]
+
+    subgraph LAYER1["Layer 1: VM + Overlay Isolation"]
+        direction TB
+        RO_MOUNT["Read-Only Host Mounts<br/>(virtiofs)"]
+        OVERLAYFS["OverlayFS<br/>Writes contained in upper layer"]
+        UFW["UFW Firewall<br/>Explicit allowlist only"]
+        SECRETS["Secrets Management<br/>0600 perms, EnvironmentFile="]
+        AUDIT["Audit Watcher<br/>inotifywait logs all writes"]
+    end
+
+    subgraph LAYER2["Layer 2: Docker Container Sandbox"]
+        direction TB
+        CONTAINER["Per-Session Container"]
+        BRIDGE["Bridge Network<br/>(configurable: bridge / none)"]
+        IMAGE["Minimal Image<br/>bookworm-slim + gh"]
+        BIND_RO["Vault: read-only bind"]
+        BIND_RW["Workspace: rw bind"]
+    end
+
+    subgraph GATED_EXIT["Gated Exit to Host"]
+        direction TB
+        GITLEAKS["gitleaks secret scan"]
+        ALLOWLIST["Path allowlist check"]
+        SIZE_CHECK["Size / filetype check"]
+        HUMAN["Human approval<br/>(or --auto for CI)"]
+    end
+
+    AGENT --> LAYER1
+    LAYER1 -->|tool execution| LAYER2
+    LAYER1 -->|sync request| GATED_EXIT
+    GATED_EXIT -->|approved only| HOST_FS["Host Filesystem"]
+
+    style LAYER1 fill:#e8f5e9,stroke:#4CAF50,stroke-width:3px
+    style LAYER2 fill:#e3f2fd,stroke:#2196F3,stroke-width:3px
+    style GATED_EXIT fill:#fff3e0,stroke:#FF9800,stroke-width:2px

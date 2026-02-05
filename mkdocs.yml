@@ -1,0 +1,59 @@
+site_name: OpenClaw Sandbox
+site_description: Secure, isolated VM environment for running OpenClaw agents
+site_url: https://peleke.github.io/openclaw-sandbox/
+repo_url: https://github.com/Peleke/openclaw-sandbox
+repo_name: Peleke/openclaw-sandbox
+
+theme:
+  name: readthedocs
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Prerequisites: getting-started/prerequisites.md
+    - Installation: getting-started/installation.md
+    - First Session: getting-started/first-session.md
+  - Usage:
+    - Bootstrap Flags: usage/bootstrap-flags.md
+    - Filesystem Modes: usage/filesystem-modes.md
+    - Sync Gate: usage/sync-gate.md
+    - VM Management: usage/vm-management.md
+  - Configuration:
+    - Overview: configuration/overview.md
+    - Secrets: configuration/secrets.md
+    - Docker Sandbox: configuration/docker-sandbox.md
+    - Network Policy: configuration/network-policy.md
+    - Telegram: configuration/telegram.md
+    - GitHub CLI: configuration/github-cli.md
+    - Obsidian Vault: configuration/obsidian-vault.md
+    - Cadence: configuration/cadence.md
+    - buildlog: configuration/buildlog.md
+  - Architecture:
+    - Overview: architecture/overview.md
+    - Defense in Depth: architecture/defense-in-depth.md
+    - Secrets Pipeline: architecture/secrets-pipeline.md
+    - Overlay Filesystem: architecture/overlay-filesystem.md
+  - Security:
+    - Threat Model: security/threat-model.md
+    - STRIDE Analysis:
+      - Spoofing: security/stride/spoofing.md
+      - Tampering: security/stride/tampering.md
+      - Repudiation: security/stride/repudiation.md
+      - Information Disclosure: security/stride/information-disclosure.md
+      - Denial of Service: security/stride/denial-of-service.md
+      - Elevation of Privilege: security/stride/elevation-of-privilege.md
+      - Supply Chain: security/stride/supply-chain.md
+  - Development:
+    - Testing: development/testing.md
+    - Contributing: development/contributing.md
+    - Releases: development/releases.md
+  - Troubleshooting: troubleshooting.md
+  - Publication Series: publication-series-outline.md
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - admonition
+  - codehilite
+  - def_list
+  - tables

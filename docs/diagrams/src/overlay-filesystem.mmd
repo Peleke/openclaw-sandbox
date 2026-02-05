@@ -1,0 +1,42 @@
+graph TB
+    subgraph HOST_MOUNT["Host Mount (virtiofs, read-only)"]
+        LOWER["/mnt/openclaw<br/>(lowerdir)<br/><i>Original project files<br/>package.json, src/, dist/, ...</i>"]
+    end
+
+    subgraph OVERLAY_DIRS["Overlay Directories"]
+        UPPER["/var/lib/openclaw/overlay/openclaw/upper<br/>(upperdir)<br/><i>All agent writes land here<br/>New files, modifications, deletions</i>"]
+        WORK["/var/lib/openclaw/overlay-work/openclaw<br/>(workdir)<br/><i>Internal OverlayFS bookkeeping</i>"]
+    end
+
+    subgraph MERGED_VIEW["Merged View"]
+        WORKSPACE["/workspace<br/>(merged mount point)<br/><i>Unified view: lower + upper<br/>Services and gateway run here</i>"]
+    end
+
+    subgraph CONSUMERS["Consumers"]
+        GW["Gateway Service<br/>WorkingDirectory=/workspace"]
+        DOCKER["Docker Containers<br/>/workspace bind mount"]
+        WATCHER["overlay-watcher<br/>Monitors upper for audit log"]
+    end
+
+    subgraph SYNC["Sync to Host"]
+        RSYNC["rsync from upper"]
+        VALIDATE["Validation Pipeline<br/>gitleaks + allowlist + size"]
+        HOST_FS["Host ~/Projects/openclaw"]
+    end
+
+    LOWER -->|read paths| WORKSPACE
+    UPPER -->|write paths + overrides| WORKSPACE
+    WORK -.->|bookkeeping| WORKSPACE
+
+    WORKSPACE --> GW
+    WORKSPACE --> DOCKER
+    UPPER --> WATCHER
+    UPPER --> RSYNC
+    RSYNC --> VALIDATE
+    VALIDATE -->|approved| HOST_FS
+
+    style HOST_MOUNT fill:#e3f2fd,stroke:#2196F3,stroke-width:2px
+    style OVERLAY_DIRS fill:#fff3e0,stroke:#FF9800,stroke-width:2px
+    style MERGED_VIEW fill:#e8f5e9,stroke:#4CAF50,stroke-width:3px
+    style CONSUMERS fill:#f3e5f5,stroke:#9C27B0
+    style SYNC fill:#fce4ec,stroke:#E91E63
