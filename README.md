@@ -29,11 +29,12 @@ Running AI agents on your host machine is risky:
 
 ## Features
 
+- **Filesystem Isolation** - OverlayFS: host mounts are read-only, all writes contained in overlay
 - **Network Containment** - UFW firewall with explicit allowlist (only HTTPS, DNS, Tailscale)
 - **Secrets Management** - Multiple injection methods, never in logs or process lists
+- **Gated Sync** - Validated pipeline (gitleaks, path allowlist) before changes reach host
 - **Tailscale Integration** - Route to your private network via host
 - **Zero-Config Deploy** - Single command bootstrap from macOS
-- **Host Mounts** - Bidirectional sync for your codebase and vaults
 
 ## Quick Start
 
@@ -52,37 +53,84 @@ limactl shell openclaw-sandbox
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         macOS Host                               │
-│                                                                  │
-│   ┌─────────────┐     ┌─────────────┐     ┌─────────────┐      │
-│   │  OpenClaw   │     │   Secrets   │     │  Obsidian   │      │
-│   │    Repo     │     │    File     │     │   Vault     │      │
-│   └──────┬──────┘     └──────┬──────┘     └──────┬──────┘      │
-│          │                   │                   │              │
-│          │  Lima mounts      │                   │              │
-│          ▼                   ▼                   ▼              │
-│   ╔═══════════════════════════════════════════════════════╗    │
-│   ║                 Ubuntu 24.04 VM                        ║    │
-│   ║  ┌─────────────────────────────────────────────────┐  ║    │
-│   ║  │  /mnt/openclaw  /mnt/secrets  /mnt/obsidian     │  ║    │
-│   ║  └─────────────────────────────────────────────────┘  ║    │
-│   ║                                                        ║    │
-│   ║  ┌──────────────┐  ┌──────────────┐  ┌────────────┐  ║    │
-│   ║  │   Gateway    │  │   Firewall   │  │  Tailscale │  ║    │
-│   ║  │  :18789      │  │     UFW      │  │   Routing  │  ║    │
-│   ║  └──────────────┘  └──────────────┘  └────────────┘  ║    │
-│   ║                                                        ║    │
-│   ║  ┌─────────────────────────────────────────────────┐  ║    │
-│   ║  │         /etc/openclaw/secrets.env               │  ║    │
-│   ║  │         (mode 0600, service user only)          │  ║    │
-│   ║  └─────────────────────────────────────────────────┘  ║    │
-│   ╚═══════════════════════════════════════════════════════╝    │
-│                              │                                   │
-│                              ▼                                   │
-│                      localhost:18789                             │
-│                    (Gateway API access)                          │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ macOS Host                                                │
+│                                                           │
+│  ~/Projects/openclaw ◄──── sync-gate.sh (approved only)  │
+│                                                           │
+│  ╔════════════════════════════════════════════════════╗   │
+│  ║ Lima VM (Ubuntu 24.04)                             ║   │
+│  ║                                                     ║   │
+│  ║  /mnt/openclaw (read-only virtiofs from host)      ║   │
+│  ║       │ lowerdir                                    ║   │
+│  ║       ▼                                             ║   │
+│  ║  ┌───────────────────────┐                          ║   │
+│  ║  │  OverlayFS            │                          ║   │
+│  ║  │  upper: /var/lib/     │ ◄── all writes land here ║   │
+│  ║  │    openclaw/overlay/  │                          ║   │
+│  ║  │  merged: /workspace   │ ◄── services run here    ║   │
+│  ║  └───────────────────────┘                          ║   │
+│  ║                                                     ║   │
+│  ║  ┌──────────────┐  ┌──────────────┐                ║   │
+│  ║  │   Gateway    │  │   Firewall   │                ║   │
+│  ║  │  :18789      │  │     UFW      │                ║   │
+│  ║  └──────────────┘  └──────────────┘                ║   │
+│  ║                                                     ║   │
+│  ║  Validation before sync to host:                    ║   │
+│  ║    ✓ Secret scan (gitleaks)                         ║   │
+│  ║    ✓ Path allowlist                                 ║   │
+│  ║    ✓ Size check                                     ║   │
+│  ║    ✓ No .env/.pem/.key files                        ║   │
+│  ╚════════════════════════════════════════════════════╝   │
+└──────────────────────────────────────────────────────────┘
+```
+
+## Filesystem Isolation
+
+Host mounts are **read-only by default**. All writes land in an OverlayFS upper layer inside the VM. Changes only reach the host through a validated sync gate.
+
+This is the **process-level** complement to OpenClaw's built-in Docker sandbox (which isolates individual tool executions). Together they form defense-in-depth:
+
+```
+OpenClaw built-in sandbox:  tool execution → Docker container
+This repo (overlay):        gateway process → VM + read-only host mounts
+```
+
+### Modes
+
+| Mode | Flag | Host Mounts | Overlay | Sync |
+|------|------|-------------|---------|------|
+| **Secure** (default) | _(none)_ | Read-only | Active | Manual via `sync-gate.sh` |
+| **YOLO** | `--yolo` | Read-only | Active | Auto-sync every 30s |
+| **YOLO-Unsafe** | `--yolo-unsafe` | Read-write | Disabled | Direct (legacy) |
+
+### Syncing Changes to Host
+
+```bash
+# Show pending changes
+./scripts/sync-gate.sh --dry-run
+
+# Validate and apply (interactive)
+./scripts/sync-gate.sh
+
+# Auto-apply (CI/automation)
+./scripts/sync-gate.sh --auto
+
+# Check overlay status in VM
+./scripts/sync-gate.sh --status
+
+# Discard all overlay writes
+./scripts/sync-gate.sh --reset
+```
+
+### VM-side Helpers
+
+```bash
+# Check overlay state
+limactl shell openclaw-sandbox -- overlay-status
+
+# Reset overlay (discard all writes)
+limactl shell openclaw-sandbox -- sudo overlay-reset
 ```
 
 ## Secrets Management
@@ -134,7 +182,7 @@ EOF
 ## Usage
 
 ```bash
-# Full bootstrap (creates VM if needed)
+# Full bootstrap — secure mode (default: read-only mounts + overlay)
 ./bootstrap.sh --openclaw ~/Projects/openclaw
 
 # With secrets
@@ -142,6 +190,12 @@ EOF
 
 # With Obsidian vault
 ./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
+
+# YOLO mode — overlay + auto-sync every 30s
+./bootstrap.sh --openclaw ~/Projects/openclaw --yolo
+
+# YOLO-unsafe — no overlay, rw mounts (legacy, requires --delete first)
+./bootstrap.sh --openclaw ~/Projects/openclaw --yolo-unsafe
 
 # Open VM shell
 ./bootstrap.sh --shell
@@ -152,7 +206,7 @@ EOF
 # Stop VM
 ./bootstrap.sh --kill
 
-# Delete VM completely
+# Delete VM completely (required to change mount modes)
 ./bootstrap.sh --delete
 ```
 
@@ -323,6 +377,7 @@ Dependencies are installed automatically:
 - [Lima](https://lima-vm.io/) - Linux VM manager
 - [Ansible](https://www.ansible.com/) - Configuration management
 - [jq](https://jqlang.github.io/jq/) - JSON processor
+- [gitleaks](https://github.com/gitleaks/gitleaks) - Secret scanning (for sync-gate)
 - [Tailscale](https://tailscale.com/) - (optional) private networking
 
 ## Development Phases
@@ -336,17 +391,20 @@ Dependencies are installed automatically:
 | S5 | Done | Secrets management |
 | S6 | Done | Telegram integration |
 | S7 | Done | Cadence (ambient signals) |
-| **S8** | **Done** | **buildlog (ambient learning)** |
-| S9 | Planned | Audit logging |
-| S10 | Planned | Multi-tenant |
+| S8 | Done | buildlog (ambient learning) |
+| **S9** | **Done** | **OverlayFS filesystem isolation** |
+| S10 | Planned | Docker sandbox inside VM |
+| S11 | Planned | Multi-tenant |
 
 ## Security Considerations
 
-1. **Secrets never logged** - All Ansible tasks use `no_log: true`
-2. **File permissions** - `/etc/openclaw/secrets.env` is `0600`
-3. **No process exposure** - Using `EnvironmentFile=` not `Environment=`
-4. **Network isolation** - Explicit allowlist, all else denied
-5. **No external deps** - No 1Password, no SOPS, just files
+1. **Filesystem isolation** - Host mounts read-only, writes contained in OverlayFS
+2. **Gated sync** - gitleaks scan + path allowlist before changes reach host
+3. **Secrets never logged** - All Ansible tasks use `no_log: true`
+4. **File permissions** - `/etc/openclaw/secrets.env` is `0600`
+5. **No process exposure** - Using `EnvironmentFile=` not `Environment=`
+6. **Network isolation** - Explicit allowlist, all else denied
+7. **Audit trail** - inotifywait watcher logs all overlay writes
 
 ## Troubleshooting
 
@@ -377,19 +435,21 @@ limactl shell openclaw-sandbox -- ~/test-tailscale.sh 100.x.x.x
 
 ## Tests
 
-The project includes a comprehensive test suite:
+The project includes comprehensive test suites:
 
 ```bash
-# Run all tests (requires VM running)
-./tests/cadence/run-all.sh
+# Overlay tests (60 checks)
+./tests/overlay/run-all.sh              # Full suite (requires VM)
+./tests/overlay/run-all.sh --quick      # Ansible validation only
+./tests/overlay/test-overlay-ansible.sh # Role structure, templates, integration (60 checks)
+./tests/overlay/test-overlay-role.sh    # VM deployment tests (19 checks)
 
-# Quick mode - skip E2E tests (no VM required)
-./tests/cadence/run-all.sh --quick
-
-# Individual test suites
-./tests/cadence/test-cadence-ansible.sh  # Ansible role validation (32 checks)
-./tests/cadence/test-cadence-role.sh     # VM deployment tests (22 checks)
-./tests/cadence/test-cadence-e2e.sh      # Full pipeline E2E (10 checks)
+# Cadence tests (64 checks)
+./tests/cadence/run-all.sh              # Full suite (requires VM)
+./tests/cadence/run-all.sh --quick      # Ansible validation only
+./tests/cadence/test-cadence-ansible.sh # Ansible role validation (32 checks)
+./tests/cadence/test-cadence-role.sh    # VM deployment tests (22 checks)
+./tests/cadence/test-cadence-e2e.sh     # Full pipeline E2E (10 checks)
 ```
 
 ### CI/CD
@@ -402,7 +462,7 @@ The project includes a comprehensive test suite:
 1. Fork the repo
 2. Create a feature branch
 3. Make changes
-4. Run tests: `./tests/cadence/run-all.sh --quick`
+4. Run tests: `./tests/overlay/run-all.sh --quick && ./tests/cadence/run-all.sh --quick`
 5. Open a PR (CI will run automatically)
 
 ## Releases
