@@ -1,0 +1,52 @@
+graph TB
+    subgraph HOST["macOS Host"]
+        OPENCLAW_DIR["~/Projects/openclaw<br/>(source code)"]
+        SYNC["sync-gate.sh<br/>(validated sync)"]
+        BOOTSTRAP["bootstrap.sh"]
+    end
+
+    subgraph VM["Lima VM (Ubuntu 24.04)"]
+        subgraph MOUNTS["Host Mounts (read-only)"]
+            MNT_OC["/mnt/openclaw"]
+            MNT_PROV["/mnt/provision"]
+            MNT_OBS["/mnt/obsidian<br/>(optional vault)"]
+        end
+
+        subgraph OVERLAY["OverlayFS"]
+            LOWER["lowerdir: /mnt/openclaw<br/>(read-only)"]
+            UPPER["upperdir: /var/lib/openclaw/overlay<br/>(all writes land here)"]
+            MERGED["/workspace<br/>(merged view — services run here)"]
+        end
+
+        subgraph GATEWAY["Gateway (:18789)"]
+            GW_PROC["node dist/index.js gateway"]
+            ENV_FILE["EnvironmentFile=<br/>/etc/openclaw/secrets.env"]
+        end
+
+        subgraph DOCKER["Docker Sandbox"]
+            CONTAINER["Container (per-session)<br/>image: openclaw-sandbox:bookworm-slim<br/>network: bridge"]
+            WORKSPACE_BIND["/workspace → bind mount"]
+            VAULT_BIND["/workspace-obsidian → bind mount (ro)"]
+        end
+
+        FIREWALL["UFW Firewall<br/>HTTPS, DNS, Tailscale only"]
+        WATCHER["overlay-watcher<br/>(inotifywait audit log)"]
+    end
+
+    OPENCLAW_DIR -->|virtiofs| MNT_OC
+    MNT_OC --> LOWER
+    LOWER --> MERGED
+    UPPER --> MERGED
+    MERGED --> GW_PROC
+    GW_PROC -->|tool execution| CONTAINER
+    MERGED --> WORKSPACE_BIND
+    UPPER -.->|rsync| SYNC
+    SYNC -.->|approved changes| OPENCLAW_DIR
+    WATCHER -.->|monitors| UPPER
+
+    style HOST fill:#e8f4f8,stroke:#2196F3
+    style VM fill:#fff3e0,stroke:#FF9800
+    style OVERLAY fill:#e8f5e9,stroke:#4CAF50
+    style GATEWAY fill:#f3e5f5,stroke:#9C27B0
+    style DOCKER fill:#fce4ec,stroke:#E91E63
+    style FIREWALL fill:#ffebee,stroke:#f44336
