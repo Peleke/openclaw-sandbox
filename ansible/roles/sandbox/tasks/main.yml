@@ -211,8 +211,10 @@
             'agents': openclaw_config.agents | default({}) | combine({
               'defaults': (openclaw_config.agents.defaults | default({})) | combine({
                 'sandbox': (openclaw_config.agents.defaults.sandbox | default({})) | combine({
-                  'env': (openclaw_config.agents.defaults.sandbox.env | default({})) | combine({
-                    'GH_TOKEN': '${GH_TOKEN}'
+                  'docker': (openclaw_config.agents.defaults.sandbox.docker | default({})) | combine({
+                    'env': (openclaw_config.agents.defaults.sandbox.docker.env | default({})) | combine({
+                      'GH_TOKEN': '${GH_TOKEN}'
+                    })
                   })
                 })
               })
@@ -229,7 +231,7 @@
       when: openclaw_json.stat.exists and vault_overlay_check.stat.exists
       ansible.builtin.set_fact:
         vault_bind: "{{ sandbox_vault_path }}:{{ sandbox_vault_path }}:{{ sandbox_vault_access }}"
-        existing_binds: "{{ openclaw_config.agents.defaults.sandbox.binds | default([]) }}"
+        existing_binds: "{{ openclaw_config.agents.defaults.sandbox.docker.binds | default([]) }}"
 
     - name: Add vault bind mount to sandbox config
       when: >
@@ -242,7 +244,9 @@
             'agents': openclaw_config.agents | default({}) | combine({
               'defaults': (openclaw_config.agents.defaults | default({})) | combine({
                 'sandbox': (openclaw_config.agents.defaults.sandbox | default({})) | combine({
-                  'binds': existing_binds + [vault_bind]
+                  'docker': (openclaw_config.agents.defaults.sandbox.docker | default({})) | combine({
+                    'binds': existing_binds + [vault_bind]
+                  })
                 })
               })
             })

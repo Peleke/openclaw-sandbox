@@ -121,21 +121,21 @@ if vm_exec test -f "$USER_HOME/.openclaw/openclaw.json" 2>/dev/null; then
 
   if [[ "$VAULT_MOUNTED" == "true" ]]; then
     # Check sandbox.binds contains vault
-    if echo "$SANDBOX_CONFIG" | jq -e '.agents.defaults.sandbox.binds[]' 2>/dev/null | grep -q "workspace-obsidian"; then
-      log_pass "openclaw.json has vault bind in sandbox.binds"
+    if echo "$SANDBOX_CONFIG" | jq -e '.agents.defaults.sandbox.docker.binds[]' 2>/dev/null | grep -q "workspace-obsidian"; then
+      log_pass "openclaw.json has vault bind in sandbox.docker.binds"
     else
-      log_fail "openclaw.json should have vault bind in sandbox.binds"
+      log_fail "openclaw.json should have vault bind in sandbox.docker.binds"
     fi
 
     # Check bind is read-only
-    if echo "$SANDBOX_CONFIG" | jq -e '.agents.defaults.sandbox.binds[]' 2>/dev/null | grep -q ":ro"; then
+    if echo "$SANDBOX_CONFIG" | jq -e '.agents.defaults.sandbox.docker.binds[]' 2>/dev/null | grep -q ":ro"; then
       log_pass "Vault bind is read-only (:ro)"
     else
       log_fail "Vault bind should be read-only (:ro)"
     fi
   else
     # Without vault, binds should not contain vault
-    if ! echo "$SANDBOX_CONFIG" | jq -e '.agents.defaults.sandbox.binds[]' 2>/dev/null | grep -q "workspace-obsidian" 2>/dev/null; then
+    if ! echo "$SANDBOX_CONFIG" | jq -e '.agents.defaults.sandbox.docker.binds[]' 2>/dev/null | grep -q "workspace-obsidian" 2>/dev/null; then
       log_pass "No vault bind in sandbox.binds (vault not mounted)"
     else
       log_fail "Should not have vault bind when vault not mounted"

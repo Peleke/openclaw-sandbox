@@ -181,10 +181,10 @@ if vm_exec test -f "$USER_HOME/.openclaw/openclaw.json" 2>/dev/null; then
 
   # Check if sandbox.env.GH_TOKEN exists (only if GH_TOKEN was provided)
   if vm_exec sudo grep -q "^GH_TOKEN=" /etc/openclaw/secrets.env 2>/dev/null; then
-    if echo "$SANDBOX_CONFIG" | jq -e '.agents.defaults.sandbox.env.GH_TOKEN' >/dev/null 2>&1; then
-      log_pass "openclaw.json has sandbox.env.GH_TOKEN passthrough"
+    if echo "$SANDBOX_CONFIG" | jq -e '.agents.defaults.sandbox.docker.env.GH_TOKEN' >/dev/null 2>&1; then
+      log_pass "openclaw.json has sandbox.docker.env.GH_TOKEN passthrough"
     else
-      log_fail "openclaw.json missing sandbox.env.GH_TOKEN passthrough"
+      log_fail "openclaw.json missing sandbox.docker.env.GH_TOKEN passthrough"
     fi
   else
     log_skip "GH_TOKEN not in secrets (passthrough not expected)"
