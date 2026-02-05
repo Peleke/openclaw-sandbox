@@ -110,8 +110,12 @@ echo "▸ Docker Group Membership"
 echo ""
 
 # Check current user is in docker group
+# Note: `id -nG` may not reflect group changes until re-login, so also check /etc/group
+CURRENT_USER=$(vm_exec whoami 2>/dev/null || echo "")
 if vm_exec id -nG 2>/dev/null | grep -qw docker; then
-  log_pass "Current user is in docker group"
+  log_pass "Current user is in docker group (active session)"
+elif vm_exec getent group docker 2>/dev/null | grep -q "$CURRENT_USER"; then
+  log_pass "Current user is in docker group (via /etc/group, needs re-login for session)"
 else
   log_fail "Current user NOT in docker group"
 fi
