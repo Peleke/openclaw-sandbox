@@ -255,11 +255,16 @@
             })
           }, recursive=true) }}
 
+    # Merge base + extra network allow lists
+    - name: Compute merged network allow list
+      ansible.builtin.set_fact:
+        _network_allow_merged: "{{ (sandbox_network_allow | default([])) + (sandbox_network_allow_extra | default([])) }}"
+
     # Add per-tool network routing config (dual-container architecture)
     - name: Add per-tool network routing config
       when: >
         openclaw_json.stat.exists and
-        (sandbox_network_allow | default([]) | length > 0)
+        (_network_allow_merged | length > 0)
       ansible.builtin.set_fact:
         openclaw_config: >-
           {{ openclaw_config | combine({
@@ -267,7 +272,7 @@
               'defaults': (openclaw_config.agents.defaults | default({})) | combine({
                 'sandbox': (openclaw_config.agents.defaults.sandbox | default({})) | combine({
                   'tools': (openclaw_config.agents.defaults.sandbox.tools | default({})) | combine({
-                    'networkAllow': sandbox_network_allow
+                    'networkAllow': _network_allow_merged
                   }),
                   'networkDocker': {
                     'network': sandbox_network_docker_network
@@ -288,7 +293,7 @@
       notify: Restart gateway
 
     - name: Create openclaw.json with sandbox config (if none exists)
-      when: not openclaw_json.stat.exists and (sandbox_network_allow | default([]) | length == 0)
+      when: not openclaw_json.stat.exists and (_network_allow_merged | length == 0)
       ansible.builtin.copy:
         dest: "{{ user_home }}/.openclaw/openclaw.json"
         owner: "{{ ansible_user }}"
@@ -312,7 +317,7 @@
       notify: Restart gateway
 
     - name: Create openclaw.json with per-tool network config (if none exists)
-      when: not openclaw_json.stat.exists and (sandbox_network_allow | default([]) | length > 0)
+      when: not openclaw_json.stat.exists and (_network_allow_merged | length > 0)
       ansible.builtin.copy:
         dest: "{{ user_home }}/.openclaw/openclaw.json"
         mode: "0640"
@@ -328,7 +333,7 @@
                     'network': sandbox_docker_network
                   },
                   'tools': {
-                    'networkAllow': sandbox_network_allow
+                    'networkAllow': _network_allow_merged
                   },
                   'networkDocker': {
                     'network': sandbox_network_docker_network
@@ -348,8 +353,8 @@
             Scope: {{ sandbox_scope }}
             Workspace: {{ sandbox_workspace_access }}
             Network: {{ sandbox_docker_network }}
-          {% if sandbox_network_allow | default([]) | length > 0 %}
-            Network allow: {{ sandbox_network_allow | join(', ') }}
+          {% if _network_allow_merged | length > 0 %}
+            Network allow: {{ _network_allow_merged | join(', ') }}
             Network container: {{ sandbox_network_docker_network }}
           {% endif %}
           {% if not setup_script.stat.exists %}

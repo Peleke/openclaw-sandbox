@@ -259,6 +259,7 @@ SANDBOX_DEFAULTS=(
   "sandbox_build_browser"
   "sandbox_docker_network"
   "sandbox_network_allow"
+  "sandbox_network_allow_extra"
   "sandbox_network_docker_network"
   "sandbox_setup_script"
 )
@@ -311,6 +312,13 @@ if grep -q 'sandbox_network_allow: \[\]' "$SANDBOX_ROLE/defaults/main.yml"; then
   log_pass "sandbox_network_allow defaults to empty list"
 else
   log_fail "sandbox_network_allow should default to empty list"
+fi
+
+# Check sandbox_network_allow_extra default is empty list
+if grep -q 'sandbox_network_allow_extra: \[\]' "$SANDBOX_ROLE/defaults/main.yml"; then
+  log_pass "sandbox_network_allow_extra defaults to empty list"
+else
+  log_fail "sandbox_network_allow_extra should default to empty list"
 fi
 
 # Check sandbox_network_docker_network default is "bridge"
@@ -439,11 +447,18 @@ else
   log_fail "Tasks missing networkDocker config injection"
 fi
 
-# Check injection is gated on sandbox_network_allow length
-if grep -q "sandbox_network_allow.*length > 0" "$SANDBOX_TASKS"; then
-  log_pass "Network config injection gated on sandbox_network_allow length"
+# Check injection is gated on merged allow list length
+if grep -q "_network_allow_merged.*length > 0" "$SANDBOX_TASKS"; then
+  log_pass "Network config injection gated on merged allow list length"
 else
-  log_fail "Network config injection should be gated on sandbox_network_allow length"
+  log_fail "Network config injection should be gated on merged allow list length"
+fi
+
+# Check base + extra lists are merged
+if grep -q "sandbox_network_allow_extra" "$SANDBOX_TASKS"; then
+  log_pass "Tasks merge sandbox_network_allow + sandbox_network_allow_extra"
+else
+  log_fail "Tasks should merge base + extra network allow lists"
 fi
 
 # Check fresh openclaw.json includes docker.network
