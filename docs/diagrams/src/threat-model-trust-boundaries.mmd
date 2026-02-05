@@ -1,0 +1,42 @@
+graph TB
+    subgraph TB1["TB1: macOS Host (HIGH trust)"]
+        HOST_USER["Operator"]
+        HOST_SECRETS["~/.openclaw-secrets.env"]
+        HOST_REPO["OpenClaw source"]
+        HOST_VAULT["Obsidian vault"]
+
+        subgraph TB2["TB2: Lima VM (MEDIUM trust)"]
+            VM_KERNEL["Ubuntu 24.04 kernel"]
+            VM_UFW["UFW firewall"]
+            VM_SECRETS["/etc/openclaw/secrets.env"]
+
+            subgraph TB3["TB3: Service User (MEDIUM trust)"]
+                GW["Gateway :18789"]
+                CADENCE["Cadence service"]
+
+                subgraph TB4["TB4: Docker Sandbox (LOW trust)"]
+                    CONTAINER["Per-session container"]
+                end
+            end
+        end
+    end
+
+    subgraph TB5["TB5: External (UNTRUSTED)"]
+        LLM_API["LLM APIs"]
+        TELEGRAM["Telegram users"]
+        NPM["npm registry"]
+    end
+
+    HOST_USER -->|provisions| VM_KERNEL
+    HOST_SECRETS -->|mount| VM_SECRETS
+    HOST_REPO -->|virtiofs ro| GW
+    GW -->|tool exec| CONTAINER
+    GW <-->|HTTPS| LLM_API
+    TELEGRAM -->|messages| GW
+    VM_UFW -->|filters| TB5
+
+    style TB4 fill:#ffebee,stroke:#E91E63,stroke-width:2px
+    style TB2 fill:#e3f2fd,stroke:#2196F3
+    style TB3 fill:#fff3e0,stroke:#FF9800
+    style TB1 fill:#e8f5e9,stroke:#4CAF50
+    style TB5 fill:#fce4ec,stroke:#f44336,stroke-width:2px

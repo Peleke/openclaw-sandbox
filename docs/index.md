@@ -69,23 +69,15 @@ limactl shell openclaw-sandbox
 
 ## Documentation
 
-<div class="grid" markdown>
-
-**[Getting Started](getting-started/prerequisites.md)** -- Prerequisites, installation, and your first session.
-
-**[Usage](usage/bootstrap-flags.md)** -- Bootstrap flags, filesystem modes, sync gate, and VM management.
-
-**[Configuration](configuration/overview.md)** -- Secrets, Docker sandbox, network policy, Telegram, GitHub CLI, Obsidian, Cadence, and buildlog.
-
-**[Architecture](architecture/overview.md)** -- System design, defense-in-depth layers, secrets pipeline, and overlay filesystem.
-
-**[Security](security/threat-model.md)** -- Threat model and full STRIDE analysis.
-
-**[Development](development/testing.md)** -- Test suites, contributing guide, and release process.
-
-**[Troubleshooting](troubleshooting.md)** -- Common issues, diagnostic commands, and recovery steps.
-
-</div>
+| Section | What's inside |
+|---------|--------------|
+| [Getting Started](getting-started/prerequisites.md) | Prerequisites, installation, and your first session |
+| [Usage](usage/bootstrap-flags.md) | Bootstrap flags, filesystem modes, sync gate, and VM management |
+| [Configuration](configuration/overview.md) | Secrets, Docker sandbox, network policy, Telegram, GitHub CLI, Obsidian, Cadence, and buildlog |
+| [Architecture](architecture/overview.md) | System design, defense-in-depth layers, secrets pipeline, and overlay filesystem |
+| [Security](security/threat-model.md) | Threat model and STRIDE analysis |
+| [Development](development/testing.md) | Test suites, contributing guide, and release process |
+| [Troubleshooting](troubleshooting.md) | Common issues, diagnostic commands, and recovery steps |
 
 ## Defense-in-Depth
 

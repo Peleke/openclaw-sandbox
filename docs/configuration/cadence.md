@@ -1,6 +1,6 @@
 # Cadence Integration
 
-Cadence is the ambient AI pipeline that watches your Obsidian vault, extracts insights from journal entries, and delivers digests to Telegram. It runs as a systemd service inside the VM.
+[Cadence](https://github.com/Peleke/cadence) is the ambient AI pipeline that watches your Obsidian vault, extracts insights from journal entries, and delivers digests to Telegram. It runs as a systemd service inside the VM.
 
 ## What Cadence Does
 
