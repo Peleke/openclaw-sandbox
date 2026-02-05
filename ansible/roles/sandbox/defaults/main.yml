@@ -20,5 +20,14 @@ sandbox_image: "openclaw-sandbox:bookworm-slim"
 # Build browser sandbox image too (heavier, optional)
 sandbox_build_browser: false
 
+# Docker network mode for sandbox containers: bridge | host | none
+# "bridge" = standard Docker networking (container can reach internet)
+# "none" = no network (OpenClaw default, maximum isolation)
+sandbox_docker_network: "bridge"
+
 # OpenClaw sandbox-setup.sh location (relative to workspace)
 sandbox_setup_script: "scripts/sandbox-setup.sh"
+
+# Obsidian vault bind mount for sandbox containers
+sandbox_vault_path: "/workspace-obsidian"
+sandbox_vault_access: "ro"

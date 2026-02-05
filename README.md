@@ -175,6 +175,24 @@ Host secrets file → Ansible regex extraction → /etc/openclaw/secrets.env (06
   → gateway EnvironmentFile= → container env passthrough (sandbox.env.GH_TOKEN)
 ```
 
+### Obsidian Vault in Containers
+
+When a vault is mounted via `--vault`, the overlay at `/workspace-obsidian` is automatically bind-mounted into sandbox containers as read-only:
+
+```bash
+# Verify vault is visible in containers
+limactl shell openclaw-sandbox -- docker run --rm \
+  -v /workspace-obsidian:/workspace-obsidian:ro alpine ls /workspace-obsidian
+
+# Check sandbox config
+limactl shell openclaw-sandbox -- jq '.agents.defaults.sandbox.binds' ~/.openclaw/openclaw.json
+# → ["/workspace-obsidian:/workspace-obsidian:ro"]
+```
+
+The gateway also exports `OBSIDIAN_VAULT_PATH=/workspace-obsidian` so agents know where to find vault files.
+
+If you re-provision without `--vault`, stale obsidian mount units are automatically cleaned up (no failures).
+
 ## Filesystem Isolation
 
 ### Modes
@@ -561,6 +579,12 @@ The project includes comprehensive test suites:
 ./tests/gh-cli/test-gh-cli-ansible.sh  # Role structure, secrets, integration
 ./tests/gh-cli/test-gh-cli-role.sh     # VM deployment tests
 
+# Obsidian vault sandbox tests
+./tests/obsidian/run-all.sh              # Full suite (requires VM)
+./tests/obsidian/run-all.sh --quick      # Ansible validation only
+./tests/obsidian/test-obsidian-ansible.sh # Role changes, config, integration
+./tests/obsidian/test-obsidian-role.sh   # VM deployment tests
+
 # Cadence tests (64 checks)
 ./tests/cadence/run-all.sh              # Full suite (requires VM)
 ./tests/cadence/run-all.sh --quick      # Ansible validation only
@@ -579,7 +603,7 @@ The project includes comprehensive test suites:
 1. Fork the repo
 2. Create a feature branch
 3. Make changes
-4. Run tests: `./tests/overlay/run-all.sh --quick && ./tests/sandbox/run-all.sh --quick && ./tests/gh-cli/run-all.sh --quick && ./tests/cadence/run-all.sh --quick`
+4. Run tests: `./tests/overlay/run-all.sh --quick && ./tests/sandbox/run-all.sh --quick && ./tests/gh-cli/run-all.sh --quick && ./tests/obsidian/run-all.sh --quick && ./tests/cadence/run-all.sh --quick`
 5. Open a PR (CI will run automatically)
 
 ## Releases

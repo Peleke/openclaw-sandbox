@@ -190,7 +190,10 @@
                 'sandbox': {
                   'mode': sandbox_mode,
                   'scope': sandbox_scope,
-                  'workspaceAccess': sandbox_workspace_access
+                  'workspaceAccess': sandbox_workspace_access,
+                  'docker': {
+                    'network': sandbox_docker_network
+                  }
                 }
               })
             })
@@ -211,8 +214,41 @@
             'agents': openclaw_config.agents | default({}) | combine({
               'defaults': (openclaw_config.agents.defaults | default({})) | combine({
                 'sandbox': (openclaw_config.agents.defaults.sandbox | default({})) | combine({
-                  'env': (openclaw_config.agents.defaults.sandbox.env | default({})) | combine({
-                    'GH_TOKEN': '${GH_TOKEN}'
+                  'docker': (openclaw_config.agents.defaults.sandbox.docker | default({})) | combine({
+                    'env': (openclaw_config.agents.defaults.sandbox.docker.env | default({})) | combine({
+                      'GH_TOKEN': '${GH_TOKEN}'
+                    })
+                  })
+                })
+              })
+            })
+          }, recursive=true) }}
+
+    # Add vault bind mount to sandbox config (if vault overlay is mounted)
+    - name: Check if vault overlay exists
+      ansible.builtin.stat:
+        path: "{{ sandbox_vault_path }}"
+      register: vault_overlay_check
+
+    - name: Check if vault bind already in sandbox config
+      when: openclaw_json.stat.exists and vault_overlay_check.stat.exists
+      ansible.builtin.set_fact:
+        vault_bind: "{{ sandbox_vault_path }}:{{ sandbox_vault_path }}:{{ sandbox_vault_access }}"
+        existing_binds: "{{ openclaw_config.agents.defaults.sandbox.docker.binds | default([]) }}"
+
+    - name: Add vault bind mount to sandbox config
+      when: >
+        openclaw_json.stat.exists and
+        vault_overlay_check.stat.exists and
+        vault_bind not in existing_binds
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': openclaw_config.agents | default({}) | combine({
+              'defaults': (openclaw_config.agents.defaults | default({})) | combine({
+                'sandbox': (openclaw_config.agents.defaults.sandbox | default({})) | combine({
+                  'docker': (openclaw_config.agents.defaults.sandbox.docker | default({})) | combine({
+                    'binds': existing_binds + [vault_bind]
                   })
                 })
               })
