@@ -26,7 +26,11 @@ jobs:
           node-version: '20'
       - run: pip install mkdocs
       - run: npm install -g @mermaid-js/mermaid-cli
+      - name: Configure Puppeteer for headless CI
+        run: echo '{"args":["--no-sandbox","--disable-setuid-sandbox"]}' > /tmp/puppeteer.json
       - run: bash scripts/render-diagrams.sh
+        env:
+          PUPPETEER_CONFIG: /tmp/puppeteer.json
       - run: mkdocs build --strict
       - uses: actions/upload-pages-artifact@v3
         if: github.ref == 'refs/heads/main'

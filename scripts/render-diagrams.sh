@@ -36,6 +36,13 @@ fi
 RENDERED=0
 FAILED=0
 
+# Build puppeteer config flag if PUPPETEER_CONFIG is set (needed for headless CI)
+PUPPETEER_FLAG=()
+if [[ -n "${PUPPETEER_CONFIG:-}" && -f "${PUPPETEER_CONFIG}" ]]; then
+    PUPPETEER_FLAG=(-p "${PUPPETEER_CONFIG}")
+    log_info "Using Puppeteer config: ${PUPPETEER_CONFIG}"
+fi
+
 for mmd_file in "${SRC_DIR}"/*.mmd; do
     [[ -f "$mmd_file" ]] || continue
 
@@ -44,11 +51,11 @@ for mmd_file in "${SRC_DIR}"/*.mmd; do
 
     log_info "Rendering ${basename}.mmd → ${basename}.svg"
 
-    if npx -y @mermaid-js/mermaid-cli -i "$mmd_file" -o "$svg_file" -b transparent 2>/dev/null; then
-        ((RENDERED++))
+    if npx -y @mermaid-js/mermaid-cli -i "$mmd_file" -o "$svg_file" -b transparent "${PUPPETEER_FLAG[@]}" 2>/dev/null; then
+        RENDERED=$((RENDERED + 1))
     else
         log_error "Failed to render: ${basename}.mmd"
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
     fi
 done
 
