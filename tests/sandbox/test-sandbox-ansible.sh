@@ -257,6 +257,9 @@ SANDBOX_DEFAULTS=(
   "sandbox_workspace_access"
   "sandbox_image"
   "sandbox_build_browser"
+  "sandbox_docker_network"
+  "sandbox_network_allow"
+  "sandbox_network_docker_network"
   "sandbox_setup_script"
 )
 
@@ -294,6 +297,27 @@ if grep -q "openclaw-sandbox:bookworm-slim" "$SANDBOX_ROLE/defaults/main.yml"; t
   log_pass "sandbox_image uses openclaw-sandbox:bookworm-slim"
 else
   log_fail "sandbox_image should use openclaw-sandbox:bookworm-slim"
+fi
+
+# Check sandbox_docker_network default is "none" (secure default)
+if grep -q 'sandbox_docker_network: "none"' "$SANDBOX_ROLE/defaults/main.yml"; then
+  log_pass "sandbox_docker_network defaults to 'none' (air-gapped)"
+else
+  log_fail "sandbox_docker_network should default to 'none'"
+fi
+
+# Check sandbox_network_allow default is empty list
+if grep -q 'sandbox_network_allow: \[\]' "$SANDBOX_ROLE/defaults/main.yml"; then
+  log_pass "sandbox_network_allow defaults to empty list"
+else
+  log_fail "sandbox_network_allow should default to empty list"
+fi
+
+# Check sandbox_network_docker_network default is "bridge"
+if grep -q 'sandbox_network_docker_network: "bridge"' "$SANDBOX_ROLE/defaults/main.yml"; then
+  log_pass "sandbox_network_docker_network defaults to 'bridge'"
+else
+  log_fail "sandbox_network_docker_network should default to 'bridge'"
 fi
 
 echo ""
@@ -391,6 +415,42 @@ if grep -A8 "Create openclaw.json with sandbox config" "$SANDBOX_TASKS" | grep -
   log_pass "openclaw.json create sets owner (fresh config path)"
 else
   log_fail "openclaw.json create MISSING owner — fresh config will be root-owned"
+fi
+
+echo ""
+
+# ============================================================
+# SECTION 7b: Per-Tool Network Config in Tasks
+# ============================================================
+echo "▸ Per-Tool Network Config"
+echo ""
+
+# Check tasks contain networkAllow injection logic
+if grep -q "networkAllow" "$SANDBOX_TASKS"; then
+  log_pass "Tasks contain networkAllow config injection"
+else
+  log_fail "Tasks missing networkAllow config injection"
+fi
+
+# Check tasks contain networkDocker injection logic
+if grep -q "networkDocker" "$SANDBOX_TASKS"; then
+  log_pass "Tasks contain networkDocker config injection"
+else
+  log_fail "Tasks missing networkDocker config injection"
+fi
+
+# Check injection is gated on sandbox_network_allow length
+if grep -q "sandbox_network_allow.*length > 0" "$SANDBOX_TASKS"; then
+  log_pass "Network config injection gated on sandbox_network_allow length"
+else
+  log_fail "Network config injection should be gated on sandbox_network_allow length"
+fi
+
+# Check fresh openclaw.json includes docker.network
+if grep -A15 "Create openclaw.json with sandbox config" "$SANDBOX_TASKS" | grep -q "sandbox_docker_network"; then
+  log_pass "Fresh openclaw.json includes docker.network"
+else
+  log_fail "Fresh openclaw.json should include docker.network"
 fi
 
 echo ""
@@ -685,6 +745,13 @@ if grep -q "openclaw-sandbox" "$SANDBOX_ROLE/defaults/main.yml"; then
   log_pass "Sandbox image follows OpenClaw naming convention"
 else
   log_fail "Sandbox image should follow naming convention"
+fi
+
+# Default network is "none" (not "bridge") for security
+if grep -q 'sandbox_docker_network: "none"' "$SANDBOX_ROLE/defaults/main.yml"; then
+  log_pass "Default network mode is 'none' (secure posture)"
+else
+  log_fail "Default network mode should be 'none' for security"
 fi
 
 # No hardcoded secrets or tokens

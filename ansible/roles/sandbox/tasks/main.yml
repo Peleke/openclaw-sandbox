@@ -255,6 +255,28 @@
             })
           }, recursive=true) }}
 
+    # Add per-tool network routing config (dual-container architecture)
+    - name: Add per-tool network routing config
+      when: >
+        openclaw_json.stat.exists and
+        (sandbox_network_allow | default([]) | length > 0)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': openclaw_config.agents | default({}) | combine({
+              'defaults': (openclaw_config.agents.defaults | default({})) | combine({
+                'sandbox': (openclaw_config.agents.defaults.sandbox | default({})) | combine({
+                  'tools': (openclaw_config.agents.defaults.sandbox.tools | default({})) | combine({
+                    'networkAllow': sandbox_network_allow
+                  }),
+                  'networkDocker': {
+                    'network': sandbox_network_docker_network
+                  }
+                })
+              })
+            })
+          }, recursive=true) }}
+
     - name: Write updated openclaw.json
       when: openclaw_json.stat.exists
       ansible.builtin.copy:
@@ -266,7 +288,7 @@
       notify: Restart gateway
 
     - name: Create openclaw.json with sandbox config (if none exists)
-      when: not openclaw_json.stat.exists
+      when: not openclaw_json.stat.exists and (sandbox_network_allow | default([]) | length == 0)
       ansible.builtin.copy:
         dest: "{{ user_home }}/.openclaw/openclaw.json"
         owner: "{{ ansible_user }}"
@@ -279,11 +301,42 @@
                 "sandbox": {
                   "mode": "{{ sandbox_mode }}",
                   "scope": "{{ sandbox_scope }}",
-                  "workspaceAccess": "{{ sandbox_workspace_access }}"
+                  "workspaceAccess": "{{ sandbox_workspace_access }}",
+                  "docker": {
+                    "network": "{{ sandbox_docker_network }}"
+                  }
                 }
               }
             }
           }
+      notify: Restart gateway
+
+    - name: Create openclaw.json with per-tool network config (if none exists)
+      when: not openclaw_json.stat.exists and (sandbox_network_allow | default([]) | length > 0)
+      ansible.builtin.copy:
+        dest: "{{ user_home }}/.openclaw/openclaw.json"
+        mode: "0640"
+        content: >-
+          {{ {
+            'agents': {
+              'defaults': {
+                'sandbox': {
+                  'mode': sandbox_mode,
+                  'scope': sandbox_scope,
+                  'workspaceAccess': sandbox_workspace_access,
+                  'docker': {
+                    'network': sandbox_docker_network
+                  },
+                  'tools': {
+                    'networkAllow': sandbox_network_allow
+                  },
+                  'networkDocker': {
+                    'network': sandbox_network_docker_network
+                  }
+                }
+              }
+            }
+          } | to_nice_json }}
       notify: Restart gateway
 
     - name: Sandbox configuration complete
@@ -294,6 +347,11 @@
             Mode: {{ sandbox_mode }}
             Scope: {{ sandbox_scope }}
             Workspace: {{ sandbox_workspace_access }}
+            Network: {{ sandbox_docker_network }}
+          {% if sandbox_network_allow | default([]) | length > 0 %}
+            Network allow: {{ sandbox_network_allow | join(', ') }}
+            Network container: {{ sandbox_network_docker_network }}
+          {% endif %}
           {% if not setup_script.stat.exists %}
             Note: Using fallback image (scripts/sandbox-setup.sh not found)
           {% endif %}

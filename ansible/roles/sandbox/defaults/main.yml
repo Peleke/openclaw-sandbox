@@ -21,9 +21,19 @@ sandbox_image: "openclaw-sandbox:bookworm-slim"
 sandbox_build_browser: false
 
 # Docker network mode for sandbox containers: bridge | host | none
+# "none" = air-gapped containers, maximum isolation (secure default)
 # "bridge" = standard Docker networking (container can reach internet)
-# "none" = no network (OpenClaw default, maximum isolation)
-sandbox_docker_network: "bridge"
+sandbox_docker_network: "none"
+
+# Per-tool network routing (dual-container architecture)
+# Tools listed here run in a separate network-enabled container.
+# All other tools stay in the isolated (network: none) container.
+# Empty list = no per-tool routing (single container, backward compatible)
+sandbox_network_allow: []
+
+# Network mode for the network-enabled container
+# Only used when sandbox_network_allow is non-empty
+sandbox_network_docker_network: "bridge"
 
 # OpenClaw sandbox-setup.sh location (relative to workspace)
 sandbox_setup_script: "scripts/sandbox-setup.sh"

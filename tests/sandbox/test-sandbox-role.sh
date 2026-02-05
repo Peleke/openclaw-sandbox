@@ -221,6 +221,38 @@ else
   log_fail "Container with --network none CAN resolve DNS (should be blocked)"
 fi
 
+# Verify docker.network in openclaw.json is "none" (secure default)
+USER_HOME_NET=$(vm_exec bash -c 'echo $HOME' 2>/dev/null || echo "/home/$(vm_exec whoami 2>/dev/null)")
+if vm_exec test -f "$USER_HOME_NET/.openclaw/openclaw.json" 2>/dev/null; then
+  NET_CONFIG=$(vm_exec cat "$USER_HOME_NET/.openclaw/openclaw.json" 2>/dev/null || echo "{}")
+  DOCKER_NETWORK=$(echo "$NET_CONFIG" | jq -r '.agents.defaults.sandbox.docker.network // ""' 2>/dev/null)
+  if [[ "$DOCKER_NETWORK" == "none" ]]; then
+    log_pass "openclaw.json docker.network = 'none' (secure default)"
+  elif [[ "$DOCKER_NETWORK" == "bridge" ]]; then
+    log_fail "openclaw.json docker.network = 'bridge' (should be 'none')"
+  elif [[ -n "$DOCKER_NETWORK" ]]; then
+    log_pass "openclaw.json docker.network = '$DOCKER_NETWORK' (custom)"
+  else
+    log_skip "docker.network not set in openclaw.json"
+  fi
+
+  # Check for per-tool network config (if configured)
+  NETWORK_ALLOW=$(echo "$NET_CONFIG" | jq -r '.agents.defaults.sandbox.tools.networkAllow // empty' 2>/dev/null)
+  if [[ -n "$NETWORK_ALLOW" ]]; then
+    log_pass "openclaw.json has tools.networkAllow configured"
+    NETWORK_DOCKER=$(echo "$NET_CONFIG" | jq -r '.agents.defaults.sandbox.networkDocker.network // ""' 2>/dev/null)
+    if [[ "$NETWORK_DOCKER" == "bridge" ]]; then
+      log_pass "openclaw.json networkDocker.network = 'bridge'"
+    elif [[ -n "$NETWORK_DOCKER" ]]; then
+      log_pass "openclaw.json networkDocker.network = '$NETWORK_DOCKER' (custom)"
+    else
+      log_fail "networkDocker.network should be set when networkAllow is configured"
+    fi
+  fi
+else
+  log_skip "openclaw.json not found (cannot verify network config)"
+fi
+
 echo ""
 
 # ============================================================
