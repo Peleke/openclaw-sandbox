@@ -92,6 +92,48 @@
           Built minimal fallback sandbox image.
           For full feature support, ensure scripts/sandbox-setup.sh exists in your OpenClaw repo.
 
+    # Ensure gh CLI is available in sandbox image (layer on top if missing)
+    - name: Check if gh exists in sandbox image
+      become: true
+      ansible.builtin.command: "docker run --rm {{ sandbox_image }} which gh"
+      register: gh_in_image
+      changed_when: false
+      failed_when: false
+
+    - name: Get base image user (to restore after augmentation)
+      when: gh_in_image.rc != 0
+      become: true
+      ansible.builtin.command: "docker inspect --format '{{ '{{' }}.Config.User{{ '}}' }}' {{ sandbox_image }}"
+      register: base_image_user
+      changed_when: false
+
+    - name: Add gh CLI to sandbox image (if missing)
+      when: gh_in_image.rc != 0
+      become: true
+      ansible.builtin.shell: |
+        BASE_USER="{{ base_image_user.stdout | default('') }}"
+        docker build -t {{ sandbox_image }} -f - . <<DOCKERFILE
+        FROM {{ sandbox_image }}
+        USER root
+        RUN apt-get update && apt-get install -y --no-install-recommends \
+            ca-certificates curl gnupg && \
+            install -m 0755 -d /etc/apt/keyrings && \
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+              -o /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+            chmod a+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+            echo "deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+              > /etc/apt/sources.list.d/github-cli.list && \
+            apt-get update && apt-get install -y --no-install-recommends gh && \
+            rm -rf /var/lib/apt/lists/*
+        ${BASE_USER:+USER ${BASE_USER}}
+        DOCKERFILE
+      register: gh_augment
+
+    - name: Display gh augmentation result
+      when: gh_augment is defined and gh_augment.changed
+      ansible.builtin.debug:
+        msg: "Added gh CLI to sandbox image (layered on top of project image)"
+
     # Verify sandbox image exists
     - name: Verify sandbox image exists
       become: true
