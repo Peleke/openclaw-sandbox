@@ -1,0 +1,8 @@
+---
+# GitHub CLI Role Defaults
+#
+# Installs gh CLI from the official GitHub APT repository.
+# Auth via GH_TOKEN env var (set through secrets role).
+
+# Master switch
+gh_cli_enabled: true
