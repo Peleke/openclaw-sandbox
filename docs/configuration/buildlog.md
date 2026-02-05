@@ -1,17 +1,25 @@
 # buildlog Integration
 
-[buildlog](https://github.com/Peleke/buildlog-template) is installed globally in the VM for ambient learning capture. It records structured trajectories from coding sessions, extracts decision patterns, and uses Thompson Sampling to surface rules that reduce mistakes.
+[buildlog](https://github.com/Peleke/buildlog-template) is a measurable learning loop for AI-assisted work. Every AI-assisted session produces decisions, corrections, and outcomes — almost all of it gets discarded. buildlog captures that signal, extracts patterns, and uses Thompson Sampling to prove which patterns actually reduce mistakes. Then it renders those proven patterns into agent instruction files (CLAUDE.md, .cursorrules, copilot-instructions.md).
 
-## What buildlog Does
+**[Full documentation](https://peleke.github.io/buildlog-template/)** | **[GitHub](https://github.com/Peleke/buildlog-template)**
+
+In the sandbox, buildlog runs as an ambient data capture layer — installed globally, MCP server always available, maximum capture by default.
+
+## How It Works
 
 ```
-Session Activity --> Trajectory Capture --> Thompson Sampling --> Agent Rules
+Session Activity --> Trajectory Capture --> Seed Extraction --> Thompson Sampling --> Agent Rules
 ```
 
 1. **Captures** structured trajectories from every coding session (commits, decisions, outcomes)
-2. **Extracts** decision patterns ("seeds") that represent learnable behaviors
-3. **Uses Thompson Sampling** to evaluate which rules actually reduce mistakes over time
-4. **Renders** proven rules to `CLAUDE.md` and other agent instruction formats
+2. **Extracts** decision patterns ("seeds") — atomic observations like "always define interfaces before implementations" or "mock at the boundary, not the implementation"
+3. **Selects** which patterns to surface using **Thompson Sampling** — each seed maintains a Beta posterior updated by observed outcomes, balancing exploration of untested rules against exploitation of proven ones
+4. **Renders** selected rules to every agent format (CLAUDE.md, .cursorrules, copilot-instructions.md, etc.)
+5. **Closes the loop** with experiments — measures Repeated Mistake Rate (RMR) across sessions for statistical evidence, not vibes
+
+!!! tip "What else is in the box"
+    Beyond the core loop: a **review gauntlet** with curated reviewer personas, **LLM-backed extraction** (Anthropic/OpenAI/Ollama), an **MCP server** so agents can query seeds and skills during sessions, and an **npm wrapper** for JS/TS projects. See the [full docs](https://peleke.github.io/buildlog-template/) for details.
 
 ## Pre-Configured MCP Server
 
@@ -168,3 +176,18 @@ limactl shell openclaw-sandbox -- uv tool install buildlog[anthropic]
 1. Ensure you are in a git repository
 2. Check that there are staged changes: `git status`
 3. Verify buildlog can access the workspace: `buildlog overview`
+
+## Further Reading
+
+For deep dives beyond sandbox integration, see the [full buildlog documentation](https://peleke.github.io/buildlog-template/):
+
+| Topic | Link |
+|-------|------|
+| Installation & setup | [Getting Started](https://peleke.github.io/buildlog-template/getting-started/installation/) |
+| Core concepts (the problem, the claim, the metric) | [Concepts](https://peleke.github.io/buildlog-template/getting-started/concepts/) |
+| CLI reference | [CLI Reference](https://peleke.github.io/buildlog-template/guides/cli-reference/) |
+| MCP integration | [MCP Integration](https://peleke.github.io/buildlog-template/guides/mcp-integration/) |
+| Running experiments | [Experiments](https://peleke.github.io/buildlog-template/guides/experiments/) |
+| Review gauntlet | [Review Gauntlet](https://peleke.github.io/buildlog-template/guides/review-gauntlet/) |
+| Multi-agent rendering | [Multi-Agent Setup](https://peleke.github.io/buildlog-template/guides/multi-agent/) |
+| Design philosophy & limitations | [Philosophy](https://peleke.github.io/buildlog-template/philosophy/) |

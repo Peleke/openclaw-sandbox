@@ -1,6 +1,8 @@
 # Cadence Integration
 
-[Cadence](https://github.com/Peleke/cadence) is the ambient AI pipeline that watches your Obsidian vault, extracts insights from journal entries, and delivers digests to Telegram. It runs as a systemd service inside the VM.
+[Cadence](https://github.com/Peleke/cadence) is typed event infrastructure for **ambient AI agency** -- agents that observe, notice, and act without being asked. Most AI agents are request-response: you ask, they answer. Cadence closes that gap by enabling agents that watch file changes, webhook events, and scheduled triggers, then act autonomously based on what they see.
+
+In the sandbox, Cadence runs as a systemd service that watches your Obsidian vault, extracts insights from journal entries, and delivers digests to Telegram.
 
 ## What Cadence Does
 
@@ -12,6 +14,8 @@ Obsidian Watcher --> Insight Extractor (LLM) --> Insight Digest (Batching) --> T
 2. **Extracts** insights using an LLM (Claude by default) from entries tagged with `::publish`
 3. **Batches** insights into digests based on content pillars and schedule
 4. **Delivers** digests to Telegram (or Discord, or a log file)
+
+Under the hood, Cadence uses a pluggable architecture (Transport, Store, Executor) with type-safe signals. The sandbox integration uses the built-in file watcher source pointed at your Obsidian vault mount.
 
 ## Prerequisites
 
