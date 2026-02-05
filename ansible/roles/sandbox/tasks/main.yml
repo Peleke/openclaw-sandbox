@@ -190,7 +190,10 @@
                 'sandbox': {
                   'mode': sandbox_mode,
                   'scope': sandbox_scope,
-                  'workspaceAccess': sandbox_workspace_access
+                  'workspaceAccess': sandbox_workspace_access,
+                  'docker': {
+                    'network': sandbox_docker_network
+                  }
                 }
               })
             })
