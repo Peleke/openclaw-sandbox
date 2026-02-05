@@ -77,6 +77,7 @@ Options:
                     *** Requires VM recreate (--delete first) ***
   -e KEY=VALUE      Pass extra variable to Ansible (can be used multiple times)
                     Example: -e "secrets_anthropic_api_key=sk-ant-xxx"
+                    Example: -e "telegram_user_id=123456789"  (pre-approve Telegram user)
   --kill            Force stop the VM immediately
   --delete          Delete the VM completely (allows fresh start)
   --shell           Open interactive shell in the VM
@@ -730,6 +731,11 @@ main() {
         log_info "Services run from: /workspace"
         log_info "Sync to host: scripts/sync-gate.sh"
     fi
+
+    echo ""
+    log_info "Telegram: dmPolicy=pairing (unknown senders get a pairing code)"
+    log_info "  Pre-approve your ID: -e \"telegram_user_id=YOUR_ID\""
+    log_info "  Approve a code:      limactl shell ${VM_NAME} -- claw pair approve <CODE>"
 }
 
 main "$@"
