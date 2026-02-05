@@ -1,0 +1,26 @@
+---
+# Sync-gate Role - Phase S9
+# Deploys VM-side helper scripts for overlay management
+
+- name: Deploy overlay-status script
+  ansible.builtin.template:
+    src: overlay-status.sh.j2
+    dest: "{{ sync_gate_scripts_path }}/overlay-status"
+    mode: "0755"
+
+- name: Deploy overlay-reset script
+  ansible.builtin.template:
+    src: overlay-reset.sh.j2
+    dest: "{{ sync_gate_scripts_path }}/overlay-reset"
+    mode: "0755"
+
+- name: Display sync-gate helper info
+  ansible.builtin.debug:
+    msg: |
+      Sync-gate helpers deployed:
+        overlay-status  — report overlay state and pending changes
+        overlay-reset   — clear overlay upper and remount (discard all writes)
+
+      From host:
+        limactl shell openclaw-sandbox -- overlay-status
+        limactl shell openclaw-sandbox -- sudo overlay-reset

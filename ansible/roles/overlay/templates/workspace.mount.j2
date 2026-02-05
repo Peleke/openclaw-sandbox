@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# OverlayFS mount for /workspace
+# Lower: read-only host mount at {{ overlay_lower_openclaw }}
+# Upper: writes land in {{ overlay_upper_base }}/openclaw/upper
+
+[Unit]
+Description=OverlayFS workspace mount
+After=local-fs.target
+DefaultDependencies=no
+
+[Mount]
+What=overlay
+Where={{ overlay_workspace_path }}
+Type=overlay
+Options=lowerdir={{ overlay_lower_openclaw }},upperdir={{ overlay_upper_base }}/openclaw/upper,workdir={{ overlay_work_base }}/openclaw
+
+[Install]
+WantedBy=local-fs.target

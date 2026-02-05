@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# OverlayFS mount for /workspace-obsidian
+# Lower: read-only host vault at {{ overlay_lower_obsidian }}
+# Upper: writes land in {{ overlay_upper_base }}/obsidian/upper
+
+[Unit]
+Description=OverlayFS obsidian vault mount
+After=local-fs.target
+DefaultDependencies=no
+
+[Mount]
+What=overlay
+Where={{ overlay_obsidian_path }}
+Type=overlay
+Options=lowerdir={{ overlay_lower_obsidian }},upperdir={{ overlay_upper_base }}/obsidian/upper,workdir={{ overlay_work_base }}/obsidian
+
+[Install]
+WantedBy=local-fs.target

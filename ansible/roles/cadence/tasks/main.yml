@@ -158,18 +158,22 @@
     content: |
       [Unit]
       Description=OpenClaw Cadence Pipeline
-      After=network.target openclaw-gateway.service
+      After=network.target openclaw-gateway.service{% if overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool) %} workspace.mount{% endif %}
+
       Wants=openclaw-gateway.service
+      {% if overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool) %}
+      Requires=workspace.mount
+      {% endif %}
 
       [Service]
       Type=simple
       User={{ ansible_user }}
-      WorkingDirectory=/mnt/openclaw
+      WorkingDirectory={{ workspace_path }}
       Environment=HOME={{ user_home }}
       Environment=PATH={{ user_home }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
       # Load secrets for LLM API access
       EnvironmentFile=-/etc/openclaw/secrets.env
-      ExecStart={{ user_home }}/.bun/bin/bun scripts/cadence.ts start
+      ExecStart={{ user_home }}/.bun/bin/bun {{ workspace_path }}/scripts/cadence.ts start
       Restart=on-failure
       RestartSec=10
 

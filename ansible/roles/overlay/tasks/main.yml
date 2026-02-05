@@ -1,0 +1,180 @@
+---
+# Overlay Role - Phase S9
+# Sets up OverlayFS for filesystem isolation
+# Host mounts become read-only lowerdirs; writes land in overlay upper
+
+- name: Skip overlay setup (yolo-unsafe mode)
+  when: overlay_yolo_unsafe | bool
+  ansible.builtin.debug:
+    msg: |
+      ⚠️  YOLO-UNSAFE mode: overlay disabled, host mounts are writable.
+      This is the legacy behavior with no filesystem isolation.
+
+- name: Set workspace path fact
+  ansible.builtin.set_fact:
+    workspace_path: "{{ overlay_workspace_path if (overlay_enabled | bool and not (overlay_yolo_unsafe | bool)) else overlay_lower_openclaw }}"
+
+- name: Setup overlay filesystem
+  when: overlay_enabled | bool and not (overlay_yolo_unsafe | bool)
+  block:
+    # Install inotify-tools for the audit watcher
+    - name: Install overlay dependencies
+      ansible.builtin.apt:
+        name:
+          - inotify-tools
+        state: present
+        update_cache: true
+
+    # Create overlay directory structure
+    - name: Create overlay upper directory (openclaw)
+      ansible.builtin.file:
+        path: "{{ overlay_upper_base }}/openclaw/upper"
+        state: directory
+        mode: "0755"
+
+    - name: Create overlay work directory (openclaw)
+      ansible.builtin.file:
+        path: "{{ overlay_work_base }}/openclaw"
+        state: directory
+        mode: "0755"
+
+    - name: Create merged mount point
+      ansible.builtin.file:
+        path: "{{ overlay_workspace_path }}"
+        state: directory
+        mode: "0755"
+
+    - name: Create log directory
+      ansible.builtin.file:
+        path: /var/log/openclaw
+        state: directory
+        mode: "0755"
+
+    # Deploy systemd mount unit for /workspace
+    - name: Deploy workspace overlay mount unit
+      ansible.builtin.template:
+        src: workspace.mount.j2
+        dest: /etc/systemd/system/workspace.mount
+        mode: "0644"
+      notify: Reload systemd
+
+    # Check if obsidian mount exists before creating overlay for it
+    - name: Check if obsidian lower mount exists
+      ansible.builtin.stat:
+        path: "{{ overlay_lower_obsidian }}"
+      register: obsidian_mount_check
+
+    - name: Setup obsidian overlay (if vault mounted)
+      when: obsidian_mount_check.stat.exists
+      block:
+        - name: Create overlay upper directory (obsidian)
+          ansible.builtin.file:
+            path: "{{ overlay_upper_base }}/obsidian/upper"
+            state: directory
+            mode: "0755"
+
+        - name: Create overlay work directory (obsidian)
+          ansible.builtin.file:
+            path: "{{ overlay_work_base }}/obsidian"
+            state: directory
+            mode: "0755"
+
+        - name: Create obsidian merged mount point
+          ansible.builtin.file:
+            path: "{{ overlay_obsidian_path }}"
+            state: directory
+            mode: "0755"
+
+        - name: Deploy obsidian overlay mount unit
+          ansible.builtin.template:
+            src: workspace-obsidian.mount.j2
+            dest: /etc/systemd/system/workspace\\x2dobsidian.mount
+            mode: "0644"
+          notify: Reload systemd
+
+    # Deploy audit watcher service
+    - name: Deploy overlay watcher service
+      ansible.builtin.template:
+        src: overlay-watcher.service.j2
+        dest: /etc/systemd/system/overlay-watcher.service
+        mode: "0644"
+      notify: Reload systemd
+
+    # Flush handlers so systemd sees the new units
+    - name: Flush handlers
+      ansible.builtin.meta: flush_handlers
+
+    # Enable and start the workspace overlay mount
+    - name: Enable and start workspace overlay
+      ansible.builtin.systemd:
+        name: workspace.mount
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Enable and start obsidian overlay (if vault mounted)
+      when: obsidian_mount_check.stat.exists
+      ansible.builtin.systemd:
+        name: workspace\\x2dobsidian.mount
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    # Start audit watcher
+    - name: Enable and start overlay watcher
+      ansible.builtin.systemd:
+        name: overlay-watcher
+        enabled: true
+        state: started
+
+    # Verify overlay is working
+    - name: Verify workspace overlay is mounted
+      ansible.builtin.command: mountpoint -q {{ overlay_workspace_path }}
+      changed_when: false
+
+    - name: Display overlay status
+      ansible.builtin.debug:
+        msg: |
+          ✅ Overlay filesystem active!
+
+          Merged:  {{ overlay_workspace_path }} (services run here)
+          Lower:   {{ overlay_lower_openclaw }} (read-only host mount)
+          Upper:   {{ overlay_upper_base }}/openclaw/upper (writes land here)
+          Watcher: overlay-watcher.service (audit log)
+
+          Host mount is READ-ONLY. All writes are contained in the overlay.
+          Use sync-gate.sh to push approved changes back to host.
+
+    # YOLO mode: deploy auto-sync timer
+    - name: Setup YOLO auto-sync
+      when: overlay_yolo_mode | bool
+      block:
+        - name: Deploy yolo-sync service
+          ansible.builtin.template:
+            src: yolo-sync.service.j2
+            dest: /etc/systemd/system/yolo-sync.service
+            mode: "0644"
+          notify: Reload systemd
+
+        - name: Deploy yolo-sync timer
+          ansible.builtin.template:
+            src: yolo-sync.timer.j2
+            dest: /etc/systemd/system/yolo-sync.timer
+            mode: "0644"
+          notify: Reload systemd
+
+        - name: Flush handlers for yolo units
+          ansible.builtin.meta: flush_handlers
+
+        - name: Enable and start yolo-sync timer
+          ansible.builtin.systemd:
+            name: yolo-sync.timer
+            enabled: true
+            state: started
+
+        - name: Display YOLO mode warning
+          ansible.builtin.debug:
+            msg: |
+              ⚠️  YOLO mode: auto-sync timer active (every {{ overlay_yolo_sync_interval }})
+              Changes in {{ overlay_workspace_path }} will auto-sync to host.
+              This bypasses the sync-gate validation pipeline.

@@ -6,7 +6,8 @@ This is a sandboxed VM environment for running AI agents with security isolation
 
 - **VM**: Ubuntu 24.04 via Lima
 - **User**: {{ ansible_user }}
-- **OpenClaw**: /mnt/openclaw
+- **Workspace**: {{ workspace_path }} (OverlayFS merged view)
+- **OpenClaw (read-only)**: /mnt/openclaw
 - **Obsidian Vault**: /mnt/obsidian (if mounted)
 
 ## Security
@@ -14,6 +15,8 @@ This is a sandboxed VM environment for running AI agents with security isolation
 - Network traffic is restricted via UFW firewall
 - Secrets are stored in `/etc/openclaw/secrets.env` (mode 0600)
 - The VM is isolated from the host system
+- Host mounts are READ-ONLY; writes go to OverlayFS upper layer
+- Use `sync-gate.sh` on the host to push approved changes back
 
 ## Getting Started
 
@@ -25,5 +28,5 @@ systemctl status openclaw-gateway
 journalctl -u openclaw-gateway -f
 
 # Run OpenClaw commands
-cd /mnt/openclaw && bun run ...
+cd {{ workspace_path }} && bun run ...
 ```

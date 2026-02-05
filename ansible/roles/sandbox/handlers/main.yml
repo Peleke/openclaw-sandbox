@@ -1,0 +1,9 @@
+---
+# Sandbox role handlers
+
+- name: Restart gateway
+  become: true
+  ansible.builtin.systemd:
+    name: openclaw-gateway
+    state: restarted
+  failed_when: false

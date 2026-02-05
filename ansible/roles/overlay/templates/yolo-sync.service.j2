@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+# YOLO mode: auto-sync overlay upper to host lower (bypasses sync-gate)
+# Only runs when overlay_yolo_mode is true
+
+[Unit]
+Description=YOLO auto-sync overlay to host
+After=workspace.mount
+Requires=workspace.mount
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rsync -av --delete {{ overlay_upper_base }}/openclaw/upper/ {{ overlay_lower_openclaw }}/
+StandardOutput=journal
+StandardError=journal

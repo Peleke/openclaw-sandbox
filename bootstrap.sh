@@ -20,6 +20,13 @@ VAULT_PATH=""
 CONFIG_PATH=""   # Optional: mount host ~/.openclaw for auth/config
 SECRETS_PATH=""  # Optional: mount a secrets .env file
 
+# Overlay mode flags
+YOLO_MODE=false      # --yolo: overlay + auto-sync timer
+YOLO_UNSAFE=false    # --yolo-unsafe: no overlay, rw mounts (legacy)
+
+# Docker sandbox flag
+DOCKER_ENABLED=true  # --no-docker: skip Docker installation
+
 # VM resource defaults
 VM_CPUS="${VM_CPUS:-4}"
 VM_MEMORY="${VM_MEMORY:-8GiB}"
@@ -63,6 +70,11 @@ Options:
                     Example: --config ~/.openclaw
   --vault PATH      Mount an Obsidian vault at /mnt/obsidian (read/write)
                     Example: --vault "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault"
+  --no-docker       Skip Docker + sandbox installation (lighter VM)
+  --yolo            Enable YOLO mode: overlay ON + auto-sync timer (30s)
+                    Writes still go to overlay but auto-sync back to host.
+  --yolo-unsafe     Disable overlay entirely: mount host dirs read-write (legacy).
+                    *** Requires VM recreate (--delete first) ***
   -e KEY=VALUE      Pass extra variable to Ansible (can be used multiple times)
                     Example: -e "secrets_anthropic_api_key=sk-ant-xxx"
   --kill            Force stop the VM immediately
@@ -70,6 +82,11 @@ Options:
   --shell           Open interactive shell in the VM
   --onboard         Run interactive openclaw onboard in the VM
   --help            Show this help message
+
+Filesystem isolation (default):
+  Host mounts are READ-ONLY. All writes go to an OverlayFS upper layer.
+  Use scripts/sync-gate.sh to push approved changes back to host.
+  --yolo enables auto-sync (convenience), --yolo-unsafe disables overlay.
 
 Environment variables:
   VM_CPUS           Number of CPUs (default: 4)
@@ -82,6 +99,8 @@ Examples:
   ./bootstrap.sh --openclaw ~/Projects/openclaw --config ~/.openclaw
   ./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
   ./bootstrap.sh --openclaw ../openclaw -e "secrets_anthropic_api_key=sk-ant-xxx"
+  ./bootstrap.sh --openclaw ../openclaw --yolo          # Auto-sync mode
+  ./bootstrap.sh --openclaw ../openclaw --yolo-unsafe   # Legacy rw mounts
   ./bootstrap.sh --shell                    # Open VM shell
   ./bootstrap.sh --onboard                  # Run interactive onboard
   ./bootstrap.sh --kill
@@ -185,6 +204,19 @@ generate_lima_config() {
         fi
     fi
 
+    # Determine mount writability based on overlay mode
+    local openclaw_writable="false"
+    local vault_writable="false"
+    local config_writable="false"
+    if [[ "$YOLO_UNSAFE" == "true" ]]; then
+        openclaw_writable="true"
+        vault_writable="true"
+        config_writable="true"
+        log_warn "YOLO-UNSAFE: All host mounts will be READ-WRITE (no overlay)"
+    else
+        log_info "Secure mode: host mounts will be READ-ONLY (overlay provides /workspace)"
+    fi
+
     # Generate the config file directly
     cat > "$LIMA_CONFIG" << EOF
 # Lima VM configuration for OpenClaw Sandbox
@@ -217,7 +249,7 @@ vmOpts:
 mounts:
   - location: "${openclaw_path}"
     mountPoint: "/mnt/openclaw"
-    writable: true
+    writable: ${openclaw_writable}
   - location: "${provision_path}"
     mountPoint: "/mnt/provision"
     writable: false
@@ -228,7 +260,7 @@ EOF
         cat >> "$LIMA_CONFIG" << EOF
   - location: "${vault_path}"
     mountPoint: "/mnt/obsidian"
-    writable: true
+    writable: ${vault_writable}
 EOF
     fi
 
@@ -238,7 +270,7 @@ EOF
         cat >> "$LIMA_CONFIG" << EOF
   - location: "${config_path}"
     mountPoint: "/mnt/openclaw-config"
-    writable: true
+    writable: ${config_writable}
 EOF
     fi
 
@@ -312,17 +344,26 @@ EOF
 
     log_info "Generated: $LIMA_CONFIG"
     log_info "Mounts:"
-    log_info "  /mnt/openclaw  -> $openclaw_path"
+    local openclaw_mode="read-only + overlay"
+    [[ "$openclaw_writable" == "true" ]] && openclaw_mode="read-write (no overlay)"
+    log_info "  /mnt/openclaw  -> $openclaw_path ($openclaw_mode)"
     log_info "  /mnt/provision -> $provision_path (read-only)"
     if [[ -n "$vault_path" ]]; then
-        log_info "  /mnt/obsidian  -> $vault_path"
+        local vault_mode="read-only + overlay"
+        [[ "$vault_writable" == "true" ]] && vault_mode="read-write (no overlay)"
+        log_info "  /mnt/obsidian  -> $vault_path ($vault_mode)"
     fi
     if [[ -n "$config_path" ]]; then
-        log_info "  /mnt/openclaw-config -> $config_path (auth/credentials)"
+        local config_mode="read-only"
+        [[ "$config_writable" == "true" ]] && config_mode="read-write"
+        log_info "  /mnt/openclaw-config -> $config_path ($config_mode)"
     fi
     if [[ -n "$secrets_path" ]]; then
         log_info "  /mnt/secrets -> $(dirname "$secrets_path") (secrets dir, read-only)"
         log_info "    Secrets file: $(basename "$secrets_path")"
+    fi
+    if [[ "$YOLO_UNSAFE" != "true" ]]; then
+        log_info "  /workspace     -> OverlayFS merge (services run here)"
     fi
 }
 
@@ -458,6 +499,9 @@ EOF
         -e "openclaw_path=/mnt/openclaw" \
         -e "obsidian_path=/mnt/obsidian" \
         -e "secrets_filename=${secrets_filename}" \
+        -e "overlay_yolo_mode=${YOLO_MODE}" \
+        -e "overlay_yolo_unsafe=${YOLO_UNSAFE}" \
+        -e "docker_enabled=${DOCKER_ENABLED}" \
         ${ANSIBLE_EXTRA_VARS[@]+"${ANSIBLE_EXTRA_VARS[@]}"}
 
     local ansible_exit=$?
@@ -506,6 +550,12 @@ verify_mounts() {
     fi
 
     log_info "All mounts verified."
+
+    # Note: /workspace overlay mount is created by the Ansible overlay role,
+    # not by Lima. It will be verified after Ansible runs.
+    if [[ "$YOLO_UNSAFE" != "true" ]]; then
+        log_info "Overlay /workspace will be set up by Ansible."
+    fi
 }
 
 # Open interactive shell in VM
@@ -536,7 +586,8 @@ run_onboard() {
     log_info "This is interactive - follow the prompts."
     echo ""
     # Run onboard interactively (needs TTY)
-    exec limactl shell "${VM_NAME}" -- bash -c "cd /mnt/openclaw && node dist/index.js onboard"
+    # Use /workspace if overlay is mounted, fall back to /mnt/openclaw
+    exec limactl shell "${VM_NAME}" -- bash -c 'cd "$(if mountpoint -q /workspace 2>/dev/null; then echo /workspace; else echo /mnt/openclaw; fi)" && node dist/index.js onboard'
 }
 
 # Extra Ansible variables (collected via -e flags)
@@ -592,6 +643,15 @@ parse_args() {
                 fi
                 VAULT_PATH="$2"
                 shift
+                ;;
+            --no-docker)
+                DOCKER_ENABLED=false
+                ;;
+            --yolo)
+                YOLO_MODE=true
+                ;;
+            --yolo-unsafe)
+                YOLO_UNSAFE=true
                 ;;
             -e)
                 if [[ -z "${2:-}" ]]; then
@@ -654,6 +714,21 @@ main() {
     if [[ -n "$VAULT_PATH" ]]; then
         echo ""
         log_info "Vault mounted at: /mnt/obsidian"
+    fi
+
+    if [[ "$YOLO_UNSAFE" == "true" ]]; then
+        echo ""
+        log_warn "YOLO-UNSAFE mode: no overlay, host mounts are writable."
+        log_warn "Agent writes go DIRECTLY to host filesystem."
+    elif [[ "$YOLO_MODE" == "true" ]]; then
+        echo ""
+        log_info "YOLO mode: overlay active + auto-sync every 30s."
+        log_info "Sync to host: scripts/sync-gate.sh (or wait for timer)"
+    else
+        echo ""
+        log_info "Secure mode: overlay active, host mounts are READ-ONLY."
+        log_info "Services run from: /workspace"
+        log_info "Sync to host: scripts/sync-gate.sh"
     fi
 }
 

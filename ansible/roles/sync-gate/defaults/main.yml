@@ -1,0 +1,10 @@
+---
+# Sync-gate Role Defaults
+
+# Path where helper scripts are deployed in VM
+sync_gate_scripts_path: /usr/local/bin
+
+# Overlay paths (inherited from overlay role defaults)
+sync_gate_upper_base: "{{ overlay_upper_base | default('/var/lib/openclaw/overlay') }}"
+sync_gate_workspace: "{{ overlay_workspace_path | default('/workspace') }}"
+sync_gate_work_base: "{{ overlay_work_base | default('/var/lib/openclaw/overlay-work') }}"

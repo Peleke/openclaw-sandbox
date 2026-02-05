@@ -27,6 +27,9 @@
     gateway_port: 18789
     gateway_bind: "0.0.0.0"
 
+    # Workspace path — set by overlay role (defaults to /mnt/openclaw if no overlay)
+    workspace_path: "{{ overlay_workspace_path | default('/workspace') if (overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool)) else openclaw_path }}"
+
   pre_tasks:
     - name: Display provisioning info
       ansible.builtin.debug:
@@ -44,6 +47,15 @@
     # Phase S5: Secrets management (runs first to make secrets available)
     - role: secrets
       tags: [secrets]
+
+    # Phase S9: Overlay filesystem isolation (before gateway so /workspace is ready)
+    - role: overlay
+      tags: [overlay]
+
+    # Phase S10: Docker CE runtime (before gateway so docker group is ready)
+    - role: docker
+      tags: [docker]
+      when: docker_enabled | default(true) | bool
 
     # Phase S2: Gateway deployment
     - role: gateway
@@ -65,9 +77,26 @@
     - role: buildlog
       tags: [buildlog]
 
+    # Phase S10: Sandbox image + config (after gateway, needs workspace built)
+    - role: sandbox
+      tags: [sandbox]
+      when: docker_enabled | default(true) | bool
+
+    # Phase S9: Sync-gate helper scripts (after buildlog)
+    - role: sync-gate
+      tags: [sync-gate]
+      when: overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool)
+
   post_tasks:
     - name: Display completion message
       ansible.builtin.debug:
         msg: |
           OpenClaw Sandbox provisioning complete!
           Gateway will be available on port {{ gateway_port }}
+          Workspace: {{ workspace_path }}
+          {% if overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool) %}
+          Overlay: ACTIVE (host mounts are read-only)
+          Sync to host: scripts/sync-gate.sh
+          {% else %}
+          Overlay: DISABLED (host mounts are writable)
+          {% endif %}
