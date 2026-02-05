@@ -71,7 +71,13 @@
         docker build -t {{ sandbox_image }} - <<'DOCKERFILE'
         FROM debian:bookworm-slim
         RUN apt-get update && apt-get install -y --no-install-recommends \
-            ca-certificates curl git jq && \
+            ca-certificates curl git jq gnupg && \
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+              -o /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+            chmod a+r /etc/apt/keyrings/githubcli-archive-keyring.gpg && \
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+              > /etc/apt/sources.list.d/github-cli.list && \
+            apt-get update && apt-get install -y --no-install-recommends gh && \
             rm -rf /var/lib/apt/lists/*
         RUN useradd -m -s /bin/bash sandbox
         USER sandbox
@@ -144,6 +150,29 @@
                   'scope': sandbox_scope,
                   'workspaceAccess': sandbox_workspace_access
                 }
+              })
+            })
+          }, recursive=true) }}
+
+    # Add GH_TOKEN env passthrough to sandbox containers (if token is set)
+    - name: Check if GH_TOKEN is available in secrets
+      ansible.builtin.command: grep -c '^GH_TOKEN=' /etc/openclaw/secrets.env
+      register: gh_token_check
+      changed_when: false
+      failed_when: false
+
+    - name: Add GH_TOKEN env passthrough to sandbox config
+      when: openclaw_json.stat.exists and gh_token_check.rc == 0 and (gh_token_check.stdout | int) > 0
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': openclaw_config.agents | default({}) | combine({
+              'defaults': (openclaw_config.agents.defaults | default({})) | combine({
+                'sandbox': (openclaw_config.agents.defaults.sandbox | default({})) | combine({
+                  'env': (openclaw_config.agents.defaults.sandbox.env | default({})) | combine({
+                    'GH_TOKEN': '${GH_TOKEN}'
+                  })
+                })
               })
             })
           }, recursive=true) }}

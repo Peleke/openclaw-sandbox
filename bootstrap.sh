@@ -77,6 +77,7 @@ Options:
                     *** Requires VM recreate (--delete first) ***
   -e KEY=VALUE      Pass extra variable to Ansible (can be used multiple times)
                     Example: -e "secrets_anthropic_api_key=sk-ant-xxx"
+                    Example: -e "secrets_github_token=ghp_xxx"  (GitHub CLI token)
                     Example: -e "telegram_user_id=123456789"  (pre-approve Telegram user)
   --kill            Force stop the VM immediately
   --delete          Delete the VM completely (allows fresh start)

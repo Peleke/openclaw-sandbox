@@ -139,6 +139,42 @@ To disable Docker sandbox (lighter VM):
 ./bootstrap.sh --openclaw ~/Projects/openclaw --no-docker
 ```
 
+## GitHub CLI
+
+The `gh` CLI is installed from the official GitHub APT repository, enabling the agent to interact with GitHub (PRs, issues, releases, API calls).
+
+### Setup
+
+```bash
+# Add your GitHub token to secrets
+echo 'GH_TOKEN=ghp_your_token_here' >> ~/.openclaw-secrets.env
+
+# Or inject directly
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "secrets_github_token=ghp_xxx"
+```
+
+`gh` natively respects the `GH_TOKEN` environment variable — no `gh auth login` needed.
+
+### Verifying
+
+```bash
+# Check gh is installed
+limactl shell openclaw-sandbox -- gh --version
+
+# Check auth (requires GH_TOKEN in secrets)
+limactl shell openclaw-sandbox -- bash -c 'source /etc/openclaw/secrets.env && gh auth status'
+
+# gh is also available inside sandbox containers
+limactl shell openclaw-sandbox -- docker run --rm openclaw-sandbox:bookworm-slim which gh
+```
+
+### Token Flow
+
+```
+Host secrets file → Ansible regex extraction → /etc/openclaw/secrets.env (0600)
+  → gateway EnvironmentFile= → container env passthrough (sandbox.env.GH_TOKEN)
+```
+
 ## Filesystem Isolation
 
 ### Modes
@@ -220,6 +256,7 @@ EOF
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `OPENCLAW_GATEWAY_PASSWORD` | Gateway auth password |
 | `OPENCLAW_GATEWAY_TOKEN` | Gateway auth token |
+| `GH_TOKEN` | GitHub CLI token (for `gh` commands) |
 | `SLACK_BOT_TOKEN` | Slack integration |
 | `DISCORD_BOT_TOKEN` | Discord integration |
 | `TELEGRAM_BOT_TOKEN` | Telegram integration |
@@ -518,6 +555,12 @@ The project includes comprehensive test suites:
 ./tests/sandbox/test-sandbox-ansible.sh # Role structure, defaults, integration
 ./tests/sandbox/test-sandbox-role.sh    # VM deployment tests (Docker, image, config)
 
+# GitHub CLI tests
+./tests/gh-cli/run-all.sh              # Full suite (requires VM)
+./tests/gh-cli/run-all.sh --quick      # Ansible validation only
+./tests/gh-cli/test-gh-cli-ansible.sh  # Role structure, secrets, integration
+./tests/gh-cli/test-gh-cli-role.sh     # VM deployment tests
+
 # Cadence tests (64 checks)
 ./tests/cadence/run-all.sh              # Full suite (requires VM)
 ./tests/cadence/run-all.sh --quick      # Ansible validation only
@@ -536,7 +579,7 @@ The project includes comprehensive test suites:
 1. Fork the repo
 2. Create a feature branch
 3. Make changes
-4. Run tests: `./tests/overlay/run-all.sh --quick && ./tests/sandbox/run-all.sh --quick && ./tests/cadence/run-all.sh --quick`
+4. Run tests: `./tests/overlay/run-all.sh --quick && ./tests/sandbox/run-all.sh --quick && ./tests/gh-cli/run-all.sh --quick && ./tests/cadence/run-all.sh --quick`
 5. Open a PR (CI will run automatically)
 
 ## Releases

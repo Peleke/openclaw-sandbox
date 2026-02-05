@@ -1,0 +1,95 @@
+---
+# GitHub CLI Role
+# Installs gh from the official GitHub APT repository.
+# Same GPG key + apt source pattern as Docker CE role.
+# Auth is handled via GH_TOKEN env var (secrets role → EnvironmentFile).
+
+- name: Skip GitHub CLI installation (gh_cli_enabled is false)
+  when: not (gh_cli_enabled | default(true) | bool)
+  ansible.builtin.debug:
+    msg: "GitHub CLI installation skipped (gh_cli_enabled=false)"
+
+- name: Install GitHub CLI
+  when: gh_cli_enabled | default(true) | bool
+  block:
+    # Check if gh is already installed
+    - name: Check if gh is installed
+      ansible.builtin.command: gh --version
+      register: gh_check
+      changed_when: false
+      failed_when: false
+
+    # Install prerequisites
+    - name: Install gh prerequisites
+      when: gh_check.rc != 0
+      become: true
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: true
+
+    # Create keyrings directory
+    - name: Create keyrings directory
+      when: gh_check.rc != 0
+      become: true
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    # Download and install GPG key
+    - name: Check if GitHub CLI GPG key exists
+      ansible.builtin.stat:
+        path: /etc/apt/keyrings/githubcli-archive-keyring.gpg
+      register: gh_gpg_key
+
+    - name: Download GitHub CLI GPG key
+      when: gh_check.rc != 0 and not gh_gpg_key.stat.exists
+      become: true
+      ansible.builtin.shell: |
+        curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+          -o /etc/apt/keyrings/githubcli-archive-keyring.gpg
+        chmod a+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/githubcli-archive-keyring.gpg
+
+    # Add GitHub CLI apt repository
+    - name: Add GitHub CLI apt repository
+      when: gh_check.rc != 0
+      become: true
+      ansible.builtin.shell: |
+        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+          > /etc/apt/sources.list.d/github-cli.list
+      args:
+        creates: /etc/apt/sources.list.d/github-cli.list
+
+    # Install gh package
+    - name: Install gh package
+      when: gh_check.rc != 0
+      become: true
+      ansible.builtin.apt:
+        name:
+          - gh
+        state: present
+        update_cache: true
+
+    # Verify installation
+    - name: Verify gh installation
+      ansible.builtin.command: gh --version
+      register: gh_version
+      changed_when: false
+
+    - name: Display gh version
+      ansible.builtin.debug:
+        msg: "{{ gh_version.stdout }}"
+
+    - name: GitHub CLI installation complete
+      ansible.builtin.debug:
+        msg: |
+          GitHub CLI installed.
+          Version: {{ gh_version.stdout }}
+          Auth: via GH_TOKEN env var (set through secrets role)
+          No 'gh auth login' needed — gh respects GH_TOKEN natively.
