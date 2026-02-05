@@ -1,0 +1,188 @@
+---
+# Sandbox Role - Phase S10
+# Builds OpenClaw sandbox Docker image and configures sandbox settings in openclaw.json
+
+- name: Skip sandbox setup (sandbox_enabled is false)
+  when: not (sandbox_enabled | default(true) | bool)
+  ansible.builtin.debug:
+    msg: "Sandbox setup skipped (sandbox_enabled=false or docker_enabled=false)"
+
+- name: Configure sandbox
+  when: sandbox_enabled | default(true) | bool
+  block:
+    # Get user home
+    - name: Get user home directory
+      ansible.builtin.shell: "getent passwd {{ ansible_user }} | cut -d: -f6"
+      register: user_home_result
+      changed_when: false
+
+    - name: Set user_home fact
+      ansible.builtin.set_fact:
+        user_home: "{{ user_home_result.stdout }}"
+
+    # Verify Docker is available (should be, docker role runs first)
+    - name: Verify Docker is available
+      ansible.builtin.command: docker info
+      register: docker_available
+      changed_when: false
+      failed_when: false
+      become: true
+
+    - name: Fail if Docker not available
+      when: docker_available.rc != 0
+      ansible.builtin.fail:
+        msg: "Docker is not available. Ensure the docker role runs before sandbox."
+
+    # Check if sandbox setup script exists
+    - name: Check if sandbox-setup.sh exists
+      ansible.builtin.stat:
+        path: "{{ workspace_path }}/{{ sandbox_setup_script }}"
+      register: setup_script
+
+    # Check if sandbox image already exists
+    - name: Check if sandbox image exists
+      become: true
+      ansible.builtin.command: "docker images -q {{ sandbox_image }}"
+      register: image_check
+      changed_when: false
+
+    # Build sandbox image using OpenClaw's setup script
+    - name: Build sandbox image
+      when: setup_script.stat.exists and image_check.stdout | length == 0
+      become: true
+      ansible.builtin.shell: |
+        cd {{ workspace_path }}
+        bash {{ sandbox_setup_script }}
+      register: sandbox_build
+      environment:
+        HOME: "{{ user_home }}"
+
+    - name: Display sandbox build result
+      when: sandbox_build is defined and sandbox_build.changed
+      ansible.builtin.debug:
+        msg: "Sandbox image built successfully"
+
+    # Build sandbox image manually if setup script doesn't exist
+    # (fallback: build a minimal sandbox image)
+    - name: Build minimal sandbox image (fallback)
+      when: not setup_script.stat.exists and image_check.stdout | length == 0
+      become: true
+      ansible.builtin.shell: |
+        docker build -t {{ sandbox_image }} - <<'DOCKERFILE'
+        FROM debian:bookworm-slim
+        RUN apt-get update && apt-get install -y --no-install-recommends \
+            ca-certificates curl git jq && \
+            rm -rf /var/lib/apt/lists/*
+        RUN useradd -m -s /bin/bash sandbox
+        USER sandbox
+        WORKDIR /workspace
+        DOCKERFILE
+      register: fallback_build
+
+    - name: Display fallback build note
+      when: fallback_build is defined and fallback_build.changed
+      ansible.builtin.debug:
+        msg: |
+          Built minimal fallback sandbox image.
+          For full feature support, ensure scripts/sandbox-setup.sh exists in your OpenClaw repo.
+
+    # Verify sandbox image exists
+    - name: Verify sandbox image exists
+      become: true
+      ansible.builtin.command: "docker images --format '{{ '{{' }}.Repository{{ '}}' }}:{{ '{{' }}.Tag{{ '}}' }}' {{ sandbox_image }}"
+      register: image_verify
+      changed_when: false
+
+    - name: Display sandbox image
+      ansible.builtin.debug:
+        msg: "Sandbox image: {{ image_verify.stdout }}"
+
+    # Build browser sandbox image if requested
+    - name: Check for browser sandbox script
+      when: sandbox_build_browser | default(false) | bool
+      ansible.builtin.stat:
+        path: "{{ workspace_path }}/scripts/sandbox-setup.sh"
+      register: browser_setup_script
+
+    - name: Build browser sandbox image
+      when: sandbox_build_browser | default(false) | bool and browser_setup_script.stat.exists
+      become: true
+      ansible.builtin.shell: |
+        cd {{ workspace_path }}
+        bash scripts/sandbox-setup.sh --browser
+      register: browser_build
+      failed_when: false
+      environment:
+        HOME: "{{ user_home }}"
+
+    # Configure openclaw.json with sandbox settings
+    - name: Check if openclaw.json exists
+      ansible.builtin.stat:
+        path: "{{ user_home }}/.openclaw/openclaw.json"
+      register: openclaw_json
+
+    - name: Read current openclaw.json
+      when: openclaw_json.stat.exists
+      ansible.builtin.slurp:
+        src: "{{ user_home }}/.openclaw/openclaw.json"
+      register: openclaw_json_content
+
+    - name: Parse openclaw.json
+      when: openclaw_json.stat.exists
+      ansible.builtin.set_fact:
+        openclaw_config: "{{ openclaw_json_content.content | b64decode | from_json }}"
+
+    - name: Merge sandbox config into openclaw.json
+      when: openclaw_json.stat.exists
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': openclaw_config.agents | default({}) | combine({
+              'defaults': (openclaw_config.agents.defaults | default({})) | combine({
+                'sandbox': {
+                  'mode': sandbox_mode,
+                  'scope': sandbox_scope,
+                  'workspaceAccess': sandbox_workspace_access
+                }
+              })
+            })
+          }, recursive=true) }}
+
+    - name: Write updated openclaw.json
+      when: openclaw_json.stat.exists
+      ansible.builtin.copy:
+        content: "{{ openclaw_config | to_nice_json }}"
+        dest: "{{ user_home }}/.openclaw/openclaw.json"
+        mode: "0640"
+      notify: Restart gateway
+
+    - name: Create openclaw.json with sandbox config (if none exists)
+      when: not openclaw_json.stat.exists
+      ansible.builtin.copy:
+        dest: "{{ user_home }}/.openclaw/openclaw.json"
+        mode: "0640"
+        content: |
+          {
+            "agents": {
+              "defaults": {
+                "sandbox": {
+                  "mode": "{{ sandbox_mode }}",
+                  "scope": "{{ sandbox_scope }}",
+                  "workspaceAccess": "{{ sandbox_workspace_access }}"
+                }
+              }
+            }
+          }
+      notify: Restart gateway
+
+    - name: Sandbox configuration complete
+      ansible.builtin.debug:
+        msg: |
+          Sandbox configured:
+            Image: {{ sandbox_image }}
+            Mode: {{ sandbox_mode }}
+            Scope: {{ sandbox_scope }}
+            Workspace: {{ sandbox_workspace_access }}
+          {% if not setup_script.stat.exists %}
+            Note: Using fallback image (scripts/sandbox-setup.sh not found)
+          {% endif %}

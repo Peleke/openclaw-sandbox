@@ -30,6 +30,7 @@ Running AI agents on your host machine is risky:
 ## Features
 
 - **Filesystem Isolation** - OverlayFS: host mounts are read-only, all writes contained in overlay
+- **Docker Sandbox** - Tool executions run inside Docker containers with network=none
 - **Network Containment** - UFW firewall with explicit allowlist (only HTTPS, DNS, Tailscale)
 - **Secrets Management** - Multiple injection methods, never in logs or process lists
 - **Gated Sync** - Validated pipeline (gitleaks, path allowlist) before changes reach host
@@ -70,31 +71,75 @@ limactl shell openclaw-sandbox
 │  ║  │    openclaw/overlay/  │                          ║   │
 │  ║  │  merged: /workspace   │ ◄── services run here    ║   │
 │  ║  └───────────────────────┘                          ║   │
+│  ║       │                                             ║   │
+│  ║       ▼                                             ║   │
+│  ║  ┌───────────────────────────────────────────────┐  ║   │
+│  ║  │  Gateway (:18789)                              │  ║   │
+│  ║  │  WorkingDirectory=/workspace                   │  ║   │
+│  ║  │                                                 │  ║   │
+│  ║  │  Tool request from agent                       │  ║   │
+│  ║  │       │                                         │  ║   │
+│  ║  │       ▼                                         │  ║   │
+│  ║  │  ┌─────────────────────────────────────────┐   │  ║   │
+│  ║  │  │  Docker Container (per-session)          │   │  ║   │
+│  ║  │  │  image: openclaw-sandbox:bookworm-slim   │   │  ║   │
+│  ║  │  │  network: none (no egress)               │   │  ║   │
+│  ║  │  │  /workspace → bind mount                 │   │  ║   │
+│  ║  │  └─────────────────────────────────────────┘   │  ║   │
+│  ║  └───────────────────────────────────────────────┘  ║   │
 │  ║                                                     ║   │
-│  ║  ┌──────────────┐  ┌──────────────┐                ║   │
-│  ║  │   Gateway    │  │   Firewall   │                ║   │
-│  ║  │  :18789      │  │     UFW      │                ║   │
-│  ║  └──────────────┘  └──────────────┘                ║   │
-│  ║                                                     ║   │
-│  ║  Validation before sync to host:                    ║   │
-│  ║    ✓ Secret scan (gitleaks)                         ║   │
-│  ║    ✓ Path allowlist                                 ║   │
-│  ║    ✓ Size check                                     ║   │
-│  ║    ✓ No .env/.pem/.key files                        ║   │
+│  ║  ┌──────────────┐  Validation before sync:          ║   │
+│  ║  │   Firewall   │    ✓ Secret scan (gitleaks)       ║   │
+│  ║  │     UFW      │    ✓ Path allowlist               ║   │
+│  ║  └──────────────┘    ✓ Size / filetype check        ║   │
 │  ╚════════════════════════════════════════════════════╝   │
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Filesystem Isolation
+## Defense-in-Depth
+
+Two layers of isolation work together:
+
+```
+Layer 1 (overlay):   gateway process  → VM + read-only host mounts + OverlayFS
+Layer 2 (docker):    tool execution   → Docker container (network=none)
+```
 
 Host mounts are **read-only by default**. All writes land in an OverlayFS upper layer inside the VM. Changes only reach the host through a validated sync gate.
 
-This is the **process-level** complement to OpenClaw's built-in Docker sandbox (which isolates individual tool executions). Together they form defense-in-depth:
+Individual tool executions (file reads/writes, shell commands, browser actions) are further sandboxed inside Docker containers with no network access.
 
+## Docker Sandbox
+
+OpenClaw's built-in sandbox containerizes individual tool executions inside the VM:
+
+- **Mode**: `all` - every session gets sandboxed
+- **Scope**: `session` - one container per session
+- **Workspace**: `rw` - tools can read/write project files
+- **Network**: `none` - containers cannot reach the internet
+- **Image**: `openclaw-sandbox:bookworm-slim`
+
+```bash
+# Check Docker in VM
+limactl shell openclaw-sandbox -- docker info
+
+# Check sandbox image
+limactl shell openclaw-sandbox -- docker images | grep openclaw-sandbox
+
+# See active containers
+limactl shell openclaw-sandbox -- docker ps -a
+
+# Verify network isolation
+limactl shell openclaw-sandbox -- docker run --rm --network none alpine ping -c1 8.8.8.8
+# ^ Should fail (no network)
 ```
-OpenClaw built-in sandbox:  tool execution → Docker container
-This repo (overlay):        gateway process → VM + read-only host mounts
+
+To disable Docker sandbox (lighter VM):
+```bash
+./bootstrap.sh --openclaw ~/Projects/openclaw --no-docker
 ```
+
+## Filesystem Isolation
 
 ### Modes
 
@@ -196,6 +241,9 @@ EOF
 
 # YOLO-unsafe — no overlay, rw mounts (legacy, requires --delete first)
 ./bootstrap.sh --openclaw ~/Projects/openclaw --yolo-unsafe
+
+# No Docker — lighter VM (skips Docker + sandbox)
+./bootstrap.sh --openclaw ~/Projects/openclaw --no-docker
 
 # Open VM shell
 ./bootstrap.sh --shell
@@ -392,19 +440,20 @@ Dependencies are installed automatically:
 | S6 | Done | Telegram integration |
 | S7 | Done | Cadence (ambient signals) |
 | S8 | Done | buildlog (ambient learning) |
-| **S9** | **Done** | **OverlayFS filesystem isolation** |
-| S10 | Planned | Docker sandbox inside VM |
+| S9 | Done | OverlayFS filesystem isolation |
+| **S10** | **Done** | **Docker sandbox inside VM** |
 | S11 | Planned | Multi-tenant |
 
 ## Security Considerations
 
 1. **Filesystem isolation** - Host mounts read-only, writes contained in OverlayFS
-2. **Gated sync** - gitleaks scan + path allowlist before changes reach host
-3. **Secrets never logged** - All Ansible tasks use `no_log: true`
-4. **File permissions** - `/etc/openclaw/secrets.env` is `0600`
-5. **No process exposure** - Using `EnvironmentFile=` not `Environment=`
-6. **Network isolation** - Explicit allowlist, all else denied
-7. **Audit trail** - inotifywait watcher logs all overlay writes
+2. **Docker sandbox** - Tool executions in containers with `network: none`
+3. **Gated sync** - gitleaks scan + path allowlist before changes reach host
+4. **Secrets never logged** - All Ansible tasks use `no_log: true`
+5. **File permissions** - `/etc/openclaw/secrets.env` is `0600`
+6. **No process exposure** - Using `EnvironmentFile=` not `Environment=`
+7. **Network isolation** - Explicit allowlist, all else denied
+8. **Audit trail** - inotifywait watcher logs all overlay writes
 
 ## Troubleshooting
 
@@ -444,6 +493,12 @@ The project includes comprehensive test suites:
 ./tests/overlay/test-overlay-ansible.sh # Role structure, templates, integration (60 checks)
 ./tests/overlay/test-overlay-role.sh    # VM deployment tests (19 checks)
 
+# Docker + Sandbox tests
+./tests/sandbox/run-all.sh              # Full suite (requires VM)
+./tests/sandbox/run-all.sh --quick      # Ansible validation only
+./tests/sandbox/test-sandbox-ansible.sh # Role structure, defaults, integration
+./tests/sandbox/test-sandbox-role.sh    # VM deployment tests (Docker, image, config)
+
 # Cadence tests (64 checks)
 ./tests/cadence/run-all.sh              # Full suite (requires VM)
 ./tests/cadence/run-all.sh --quick      # Ansible validation only
@@ -462,7 +517,7 @@ The project includes comprehensive test suites:
 1. Fork the repo
 2. Create a feature branch
 3. Make changes
-4. Run tests: `./tests/overlay/run-all.sh --quick && ./tests/cadence/run-all.sh --quick`
+4. Run tests: `./tests/overlay/run-all.sh --quick && ./tests/sandbox/run-all.sh --quick && ./tests/cadence/run-all.sh --quick`
 5. Open a PR (CI will run automatically)
 
 ## Releases

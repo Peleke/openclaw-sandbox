@@ -24,6 +24,9 @@ SECRETS_PATH=""  # Optional: mount a secrets .env file
 YOLO_MODE=false      # --yolo: overlay + auto-sync timer
 YOLO_UNSAFE=false    # --yolo-unsafe: no overlay, rw mounts (legacy)
 
+# Docker sandbox flag
+DOCKER_ENABLED=true  # --no-docker: skip Docker installation
+
 # VM resource defaults
 VM_CPUS="${VM_CPUS:-4}"
 VM_MEMORY="${VM_MEMORY:-8GiB}"
@@ -67,6 +70,7 @@ Options:
                     Example: --config ~/.openclaw
   --vault PATH      Mount an Obsidian vault at /mnt/obsidian (read/write)
                     Example: --vault "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault"
+  --no-docker       Skip Docker + sandbox installation (lighter VM)
   --yolo            Enable YOLO mode: overlay ON + auto-sync timer (30s)
                     Writes still go to overlay but auto-sync back to host.
   --yolo-unsafe     Disable overlay entirely: mount host dirs read-write (legacy).
@@ -497,6 +501,7 @@ EOF
         -e "secrets_filename=${secrets_filename}" \
         -e "overlay_yolo_mode=${YOLO_MODE}" \
         -e "overlay_yolo_unsafe=${YOLO_UNSAFE}" \
+        -e "docker_enabled=${DOCKER_ENABLED}" \
         ${ANSIBLE_EXTRA_VARS[@]+"${ANSIBLE_EXTRA_VARS[@]}"}
 
     local ansible_exit=$?
@@ -638,6 +643,9 @@ parse_args() {
                 fi
                 VAULT_PATH="$2"
                 shift
+                ;;
+            --no-docker)
+                DOCKER_ENABLED=false
                 ;;
             --yolo)
                 YOLO_MODE=true

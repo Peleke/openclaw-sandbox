@@ -52,6 +52,11 @@
     - role: overlay
       tags: [overlay]
 
+    # Phase S10: Docker CE runtime (before gateway so docker group is ready)
+    - role: docker
+      tags: [docker]
+      when: docker_enabled | default(true) | bool
+
     # Phase S2: Gateway deployment
     - role: gateway
       tags: [gateway]
@@ -71,6 +76,11 @@
     # Phase S8: buildlog ambient learning
     - role: buildlog
       tags: [buildlog]
+
+    # Phase S10: Sandbox image + config (after gateway, needs workspace built)
+    - role: sandbox
+      tags: [sandbox]
+      when: docker_enabled | default(true) | bool
 
     # Phase S9: Sync-gate helper scripts (after buildlog)
     - role: sync-gate

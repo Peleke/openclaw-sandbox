@@ -194,6 +194,8 @@
       - **Workspace**: `{{ workspace_path }}` (OverlayFS merged view — writes land here)
       - **OpenClaw (read-only)**: `/mnt/openclaw` (host mount, do NOT write here)
       - **Vault**: `/mnt/obsidian` (if mounted, read-only with overlay)
+      - **Docker Sandbox**: Tool executions run inside Docker containers (mode=all, network=none)
+      - **Defense-in-Depth**: VM overlay (process isolation) + Docker (tool isolation)
 
 # Test MCP server
 - name: Test buildlog MCP availability

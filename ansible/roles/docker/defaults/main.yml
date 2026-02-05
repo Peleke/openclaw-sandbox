@@ -1,0 +1,12 @@
+---
+# Docker Role Defaults
+
+# Master switch - Docker is ON by default
+docker_enabled: true
+
+# Docker storage driver (leave empty for auto-detect)
+# If nested overlayfs causes issues, set to "vfs"
+docker_storage_driver: ""
+
+# Docker data root (default location)
+docker_data_root: /var/lib/docker

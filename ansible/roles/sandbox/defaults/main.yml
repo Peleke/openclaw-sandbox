@@ -1,0 +1,24 @@
+---
+# Sandbox Role Defaults
+
+# Master switch - sandbox follows docker_enabled
+sandbox_enabled: "{{ docker_enabled | default(true) | bool }}"
+
+# Sandbox mode: off | non-main | all
+# "all" = sandbox every session (aggressive, good for hardened VM)
+sandbox_mode: "all"
+
+# Sandbox scope: session | agent | shared
+sandbox_scope: "session"
+
+# Workspace access from inside container: none | ro | rw
+sandbox_workspace_access: "rw"
+
+# Sandbox image name (OpenClaw default)
+sandbox_image: "openclaw-sandbox:bookworm-slim"
+
+# Build browser sandbox image too (heavier, optional)
+sandbox_build_browser: false
+
+# OpenClaw sandbox-setup.sh location (relative to workspace)
+sandbox_setup_script: "scripts/sandbox-setup.sh"

@@ -222,6 +222,9 @@
       [Service]
       Type=simple
       User={{ ansible_user }}
+      {% if docker_enabled | default(true) | bool %}
+      SupplementaryGroups=docker
+      {% endif %}
       WorkingDirectory={{ workspace_path }}
       Environment=HOME={{ user_home }}
       Environment=PATH={{ user_home }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
