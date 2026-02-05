@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Report overlay filesystem state and pending changes
+set -euo pipefail
+
+UPPER="{{ sync_gate_upper_base }}/openclaw/upper"
+WORKSPACE="{{ sync_gate_workspace }}"
+
+echo "=== OverlayFS Status ==="
+echo ""
+
+# Check if workspace overlay is mounted
+if mountpoint -q "$WORKSPACE" 2>/dev/null; then
+    echo "Workspace overlay: MOUNTED at $WORKSPACE"
+else
+    echo "Workspace overlay: NOT MOUNTED"
+    exit 1
+fi
+
+echo ""
+echo "=== Pending Changes (overlay upper) ==="
+echo ""
+
+# Show files in upper directory (these are the writes)
+if [ -d "$UPPER" ]; then
+    file_count=$(find "$UPPER" -type f 2>/dev/null | wc -l)
+    dir_count=$(find "$UPPER" -type d 2>/dev/null | wc -l)
+    total_size=$(du -sh "$UPPER" 2>/dev/null | cut -f1)
+
+    echo "Files modified/created: $file_count"
+    echo "Directories: $dir_count"
+    echo "Total size: $total_size"
+    echo ""
+
+    if [ "$file_count" -gt 0 ]; then
+        echo "--- File listing ---"
+        find "$UPPER" -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -50 | while read -r _ path; do
+            # Show relative path from upper
+            rel="${path#$UPPER/}"
+            size=$(stat -c%s "$path" 2>/dev/null || echo "?")
+            echo "  $rel ($size bytes)"
+        done
+
+        if [ "$file_count" -gt 50 ]; then
+            echo "  ... and $((file_count - 50)) more"
+        fi
+    else
+        echo "No pending changes."
+    fi
+else
+    echo "Upper directory does not exist: $UPPER"
+fi
+
+echo ""
+echo "=== Watcher Log (last 10 entries) ==="
+if [ -f /var/log/openclaw/overlay-watcher.log ]; then
+    tail -10 /var/log/openclaw/overlay-watcher.log
+else
+    echo "No watcher log found."
+fi

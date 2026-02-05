@@ -10,5 +10,8 @@ brew "ansible"
 # jq - JSON parsing (used by bootstrap.sh)
 brew "jq"
 
+# gitleaks - Secret scanning (used by sync-gate.sh)
+brew "gitleaks"
+
 # Tailscale - Secure networking (for Phase S4)
 cask "tailscale"
