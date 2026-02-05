@@ -30,7 +30,9 @@ Running AI agents on your host machine is risky:
 ## Features
 
 - **Filesystem Isolation** - OverlayFS: host mounts are read-only, all writes contained in overlay
-- **Docker Sandbox** - Tool executions run inside Docker containers with network=none
+- **Docker Sandbox** - Tool executions run inside Docker containers with bridge networking
+- **GitHub CLI** - `gh` installed in VM and sandbox containers, GH_TOKEN passthrough
+- **Obsidian Vault Access** - Vault bind-mounted into containers as read-only
 - **Network Containment** - UFW firewall with explicit allowlist (only HTTPS, DNS, Tailscale)
 - **Secrets Management** - Multiple injection methods, never in logs or process lists
 - **Gated Sync** - Validated pipeline (gitleaks, path allowlist) before changes reach host
@@ -83,7 +85,7 @@ limactl shell openclaw-sandbox
 │  ║  │  ┌─────────────────────────────────────────┐   │  ║   │
 │  ║  │  │  Docker Container (per-session)          │   │  ║   │
 │  ║  │  │  image: openclaw-sandbox:bookworm-slim   │   │  ║   │
-│  ║  │  │  network: none (no egress)               │   │  ║   │
+│  ║  │  │  network: bridge                          │   │  ║   │
 │  ║  │  │  /workspace → bind mount                 │   │  ║   │
 │  ║  │  └─────────────────────────────────────────┘   │  ║   │
 │  ║  └───────────────────────────────────────────────┘  ║   │
@@ -102,12 +104,12 @@ Two layers of isolation work together:
 
 ```
 Layer 1 (overlay):   gateway process  → VM + read-only host mounts + OverlayFS
-Layer 2 (docker):    tool execution   → Docker container (network=none)
+Layer 2 (docker):    tool execution   → Docker container (bridge network)
 ```
 
 Host mounts are **read-only by default**. All writes land in an OverlayFS upper layer inside the VM. Changes only reach the host through a validated sync gate.
 
-Individual tool executions (file reads/writes, shell commands, browser actions) are further sandboxed inside Docker containers with no network access.
+Individual tool executions (file reads/writes, shell commands, browser actions) are further sandboxed inside Docker containers with bridge networking (configurable to `none` for full isolation).
 
 ## Docker Sandbox
 
@@ -116,8 +118,8 @@ OpenClaw's built-in sandbox containerizes individual tool executions inside the 
 - **Mode**: `all` - every session gets sandboxed
 - **Scope**: `session` - one container per session
 - **Workspace**: `rw` - tools can read/write project files
-- **Network**: `none` - containers cannot reach the internet
-- **Image**: `openclaw-sandbox:bookworm-slim`
+- **Network**: `bridge` - containers can reach the internet (configurable: `bridge` / `none`)
+- **Image**: `openclaw-sandbox:bookworm-slim` (auto-augmented with `gh` if missing)
 
 ```bash
 # Check Docker in VM
@@ -129,9 +131,8 @@ limactl shell openclaw-sandbox -- docker images | grep openclaw-sandbox
 # See active containers
 limactl shell openclaw-sandbox -- docker ps -a
 
-# Verify network isolation
-limactl shell openclaw-sandbox -- docker run --rm --network none alpine ping -c1 8.8.8.8
-# ^ Should fail (no network)
+# Verify gh is in sandbox image
+limactl shell openclaw-sandbox -- docker run --rm openclaw-sandbox:bookworm-slim gh --version
 ```
 
 To disable Docker sandbox (lighter VM):
@@ -172,7 +173,7 @@ limactl shell openclaw-sandbox -- docker run --rm openclaw-sandbox:bookworm-slim
 
 ```
 Host secrets file → Ansible regex extraction → /etc/openclaw/secrets.env (0600)
-  → gateway EnvironmentFile= → container env passthrough (sandbox.env.GH_TOKEN)
+  → gateway EnvironmentFile= → container env passthrough (sandbox.docker.env.GH_TOKEN)
 ```
 
 ### Obsidian Vault in Containers
@@ -185,7 +186,7 @@ limactl shell openclaw-sandbox -- docker run --rm \
   -v /workspace-obsidian:/workspace-obsidian:ro alpine ls /workspace-obsidian
 
 # Check sandbox config
-limactl shell openclaw-sandbox -- jq '.agents.defaults.sandbox.binds' ~/.openclaw/openclaw.json
+limactl shell openclaw-sandbox -- jq '.agents.defaults.sandbox.docker.binds' ~/.openclaw/openclaw.json
 # → ["/workspace-obsidian:/workspace-obsidian:ro"]
 ```
 
@@ -521,7 +522,7 @@ Dependencies are installed automatically:
 ## Security Considerations
 
 1. **Filesystem isolation** - Host mounts read-only, writes contained in OverlayFS
-2. **Docker sandbox** - Tool executions in containers with `network: none`
+2. **Docker sandbox** - Tool executions in containers (bridge network, configurable to `none`)
 3. **Gated sync** - gitleaks scan + path allowlist before changes reach host
 4. **Secrets never logged** - All Ansible tasks use `no_log: true`
 5. **File permissions** - `/etc/openclaw/secrets.env` is `0600`
