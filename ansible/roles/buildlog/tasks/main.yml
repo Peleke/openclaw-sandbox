@@ -191,8 +191,9 @@
       - **VM**: Ubuntu 24.04 via Lima (isolated from host)
       - **Network**: UFW firewall with explicit allowlist
       - **Secrets**: `/etc/openclaw/secrets.env` (0600, never in logs)
-      - **OpenClaw**: `/mnt/openclaw`
-      - **Vault**: `/mnt/obsidian` (if mounted)
+      - **Workspace**: `{{ workspace_path }}` (OverlayFS merged view — writes land here)
+      - **OpenClaw (read-only)**: `/mnt/openclaw` (host mount, do NOT write here)
+      - **Vault**: `/mnt/obsidian` (if mounted, read-only with overlay)
 
 # Test MCP server
 - name: Test buildlog MCP availability

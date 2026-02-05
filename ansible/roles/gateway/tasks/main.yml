@@ -149,13 +149,13 @@
 # Fix: Detect platform mismatch (macOS modules don't work on Linux)
 - name: Check if node_modules exists
   ansible.builtin.stat:
-    path: /mnt/openclaw/node_modules
+    path: "{{ workspace_path }}/node_modules"
   register: node_modules
 
 - name: Check node_modules platform marker
   when: node_modules.stat.exists
   ansible.builtin.stat:
-    path: /mnt/openclaw/node_modules/.linux-installed
+    path: "{{ workspace_path }}/node_modules/.linux-installed"
   register: linux_marker
 
 - name: Detect platform mismatch (reinstall if built on different platform)
@@ -163,26 +163,26 @@
   block:
     - name: Clear existing node_modules (platform mismatch)
       ansible.builtin.file:
-        path: /mnt/openclaw/node_modules
+        path: "{{ workspace_path }}/node_modules"
         state: absent
 
     - name: Clear bun lockb (to force fresh install)
       ansible.builtin.file:
-        path: /mnt/openclaw/bun.lockb
+        path: "{{ workspace_path }}/bun.lockb"
         state: absent
       failed_when: false
 
 - name: Re-check node_modules after potential cleanup
   ansible.builtin.stat:
-    path: /mnt/openclaw/node_modules
+    path: "{{ workspace_path }}/node_modules"
   register: node_modules_recheck
 
 - name: Install OpenClaw dependencies (using bun)
   when: not node_modules_recheck.stat.exists
   ansible.builtin.shell: |
     export PATH="{{ user_home }}/.bun/bin:$PATH"
-    cd /mnt/openclaw && bun install
-    touch /mnt/openclaw/node_modules/.linux-installed
+    cd {{ workspace_path }} && bun install
+    touch {{ workspace_path }}/node_modules/.linux-installed
   register: bun_install_result
 
 - name: Display bun install result
@@ -193,16 +193,16 @@
 # Build OpenClaw (if not already built)
 - name: Check if dist exists
   ansible.builtin.stat:
-    path: /mnt/openclaw/dist/index.js
+    path: "{{ workspace_path }}/dist/index.js"
   register: dist_exists
 
 - name: Build OpenClaw
   when: not dist_exists.stat.exists
   ansible.builtin.shell: |
     export PATH="{{ user_home }}/.bun/bin:$PATH"
-    cd /mnt/openclaw && bun run build
+    cd {{ workspace_path }} && bun run build
   args:
-    creates: /mnt/openclaw/dist/index.js
+    creates: "{{ workspace_path }}/dist/index.js"
 
 # Create systemd service for gateway
 - name: Create gateway systemd service
@@ -213,12 +213,16 @@
     content: |
       [Unit]
       Description=OpenClaw Gateway
-      After=network.target
+      After=network.target{% if overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool) %} workspace.mount{% endif %}
+
+      {% if overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool) %}
+      Requires=workspace.mount
+      {% endif %}
 
       [Service]
       Type=simple
       User={{ ansible_user }}
-      WorkingDirectory=/mnt/openclaw
+      WorkingDirectory={{ workspace_path }}
       Environment=HOME={{ user_home }}
       Environment=PATH={{ user_home }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
       # Load secrets from /etc/openclaw/secrets.env (- prefix = don't fail if missing)
