@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# Timer for YOLO auto-sync (default: every 30s)
+
+[Unit]
+Description=YOLO auto-sync timer
+
+[Timer]
+OnBootSec=60s
+OnUnitActiveSec={{ overlay_yolo_sync_interval }}
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

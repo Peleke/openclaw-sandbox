@@ -1,0 +1,29 @@
+---
+# Overlay Role Defaults
+
+# Master switch - overlay is ON by default (secure by default)
+overlay_enabled: true
+
+# YOLO mode: auto-sync overlay changes to host every 30s
+# Set via bootstrap.sh --yolo
+overlay_yolo_mode: false
+
+# Unsafe mode: skip overlay entirely, mount rw (legacy behavior)
+# Set via bootstrap.sh --yolo-unsafe — requires VM recreate
+overlay_yolo_unsafe: false
+
+# Overlay paths
+overlay_lower_openclaw: /mnt/openclaw
+overlay_lower_obsidian: /mnt/obsidian
+overlay_upper_base: /var/lib/openclaw/overlay
+overlay_work_base: /var/lib/openclaw/overlay-work
+
+# Merged mount points (where services actually run)
+overlay_workspace_path: /workspace
+overlay_obsidian_path: /workspace-obsidian
+
+# YOLO sync interval
+overlay_yolo_sync_interval: "30s"
+
+# Watcher log path
+overlay_watcher_log: /var/log/openclaw/overlay-watcher.log

@@ -1,0 +1,19 @@
+# {{ ansible_managed }}
+# Watches overlay upper directory for writes and logs them
+# Provides audit trail for all filesystem modifications
+
+[Unit]
+Description=OverlayFS write audit watcher
+After=workspace.mount
+Requires=workspace.mount
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/inotifywait -m -r --timefmt '%%Y-%%m-%%dT%%H:%%M:%%S' --format '%%T %%w%%f %%e' -e create -e modify -e delete -e move {{ overlay_upper_base }}/openclaw/upper
+StandardOutput=append:{{ overlay_watcher_log }}
+StandardError=journal
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
