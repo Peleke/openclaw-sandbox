@@ -243,6 +243,45 @@ limactl shell openclaw-sandbox -- bun /mnt/openclaw/scripts/cadence.ts digest
 
 Write journal entries with `::publish` on line 2 (after the title) to mark them for insight extraction.
 
+## buildlog Integration
+
+[buildlog](https://github.com/Peleke/buildlog-template) is installed globally for ambient learning capture:
+
+```
+┌──────────────┐     ┌─────────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Session    │────▶│    Trajectory   │────▶│   Thompson   │────▶│   Agent      │
+│   Activity   │     │    Capture      │     │   Sampling   │     │   Rules      │
+└──────────────┘     └─────────────────┘     └──────────────┘     └──────────────┘
+```
+
+### What It Does
+
+- Captures structured trajectories from every coding session
+- Extracts decision patterns ("seeds") that can be learned
+- Uses Thompson Sampling to surface rules that actually reduce mistakes
+- Renders learned rules to CLAUDE.md and other agent formats
+
+### Usage
+
+buildlog is pre-configured and the MCP server is registered. Claude Code has access to all 29 tools automatically.
+
+```bash
+# Check state
+limactl shell openclaw-sandbox -- buildlog overview
+
+# Start a session
+limactl shell openclaw-sandbox -- buildlog new my-feature
+
+# Commit (always use this instead of raw git commit)
+limactl shell openclaw-sandbox -- buildlog commit -m "feat: add feature"
+
+# Run review gauntlet
+limactl shell openclaw-sandbox -- buildlog gauntlet
+
+# Extract and render skills
+limactl shell openclaw-sandbox -- buildlog skills
+```
+
 ### Host CLI Setup
 
 To use `claw` commands from your Mac to the sandboxed gateway:
@@ -296,9 +335,10 @@ Dependencies are installed automatically:
 | S4 | Done | Tailscale routing |
 | S5 | Done | Secrets management |
 | S6 | Done | Telegram integration |
-| **S7** | **Done** | **Cadence (ambient signals)** |
-| S8 | Planned | Audit logging |
-| S9 | Planned | Multi-tenant |
+| S7 | Done | Cadence (ambient signals) |
+| **S8** | **Done** | **buildlog (ambient learning)** |
+| S9 | Planned | Audit logging |
+| S10 | Planned | Multi-tenant |
 
 ## Security Considerations
 

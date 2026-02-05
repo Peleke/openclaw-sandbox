@@ -1,0 +1,237 @@
+---
+# Buildlog Role - Phase S8
+# Installs buildlog globally via uv for ambient learning capture
+
+# Get the actual user home directory
+- name: Get user home directory
+  ansible.builtin.shell: "getent passwd {{ ansible_user }} | cut -d: -f6"
+  register: user_home_result
+  changed_when: false
+
+- name: Set user_home fact
+  ansible.builtin.set_fact:
+    user_home: "{{ user_home_result.stdout }}"
+
+# Install uv (fast Python package manager)
+- name: Check if uv is installed
+  ansible.builtin.command: "{{ user_home }}/.local/bin/uv --version"
+  register: uv_version
+  changed_when: false
+  failed_when: false
+
+- name: Install uv (if not installed)
+  when: uv_version.rc != 0
+  ansible.builtin.shell: |
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  args:
+    creates: "{{ user_home }}/.local/bin/uv"
+  environment:
+    HOME: "{{ user_home }}"
+
+- name: Verify uv installation
+  ansible.builtin.command: "{{ user_home }}/.local/bin/uv --version"
+  register: uv_installed_version
+  changed_when: false
+
+- name: Display uv version
+  ansible.builtin.debug:
+    msg: "uv version: {{ uv_installed_version.stdout }}"
+
+# Install buildlog globally via uv tool
+- name: Check if buildlog is installed as uv tool
+  ansible.builtin.shell: "{{ user_home }}/.local/bin/uv tool list | grep -q '^buildlog '"
+  register: buildlog_check
+  changed_when: false
+  failed_when: false
+  environment:
+    HOME: "{{ user_home }}"
+
+- name: Install buildlog via uv tool
+  when: buildlog_check.rc != 0
+  ansible.builtin.shell: |
+    {{ user_home }}/.local/bin/uv tool install buildlog{% if buildlog_extras %}[{{ buildlog_extras }}]{% endif %}{% if buildlog_version %} --version {{ buildlog_version }}{% endif %}
+  environment:
+    HOME: "{{ user_home }}"
+  register: buildlog_install
+
+- name: Update buildlog if already installed
+  when: buildlog_check.rc == 0
+  ansible.builtin.shell: |
+    {{ user_home }}/.local/bin/uv tool upgrade buildlog{% if buildlog_extras %}[{{ buildlog_extras }}]{% endif %}
+  environment:
+    HOME: "{{ user_home }}"
+  register: buildlog_upgrade
+  changed_when: "'Already up to date' not in buildlog_upgrade.stdout"
+  failed_when: false
+
+- name: Verify buildlog installation
+  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog --version"
+  register: buildlog_version_result
+  changed_when: false
+  environment:
+    HOME: "{{ user_home }}"
+
+- name: Display buildlog version
+  ansible.builtin.debug:
+    msg: "buildlog version: {{ buildlog_version_result.stdout }}"
+
+# Add uv tools to PATH in .bashrc
+- name: Ensure uv tools are in PATH
+  ansible.builtin.lineinfile:
+    path: "{{ user_home }}/.bashrc"
+    line: 'export PATH="$HOME/.local/bin:$PATH"'
+    create: true
+    mode: "0644"
+
+# Create ~/.claude directory for MCP and CLAUDE.md
+- name: Ensure ~/.claude directory exists
+  ansible.builtin.file:
+    path: "{{ user_home }}/.claude"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+
+# ============================================================================
+# CLAUDE.md Setup (3-step process)
+# 1. Copy from host OR create minimal default
+# 2. Run buildlog init-mcp --global (appends buildlog instructions)
+# 3. Append our sandbox-specific aggressive notes
+# ============================================================================
+
+# Step 1: Check if host provided a CLAUDE.md (copied to provision mount)
+- name: Check if host CLAUDE.md was provided
+  ansible.builtin.stat:
+    path: "{{ buildlog_host_claude_md_path }}"
+  register: host_claude_md
+
+- name: Check if CLAUDE.md already exists in VM
+  ansible.builtin.stat:
+    path: "{{ user_home }}/.claude/CLAUDE.md"
+  register: existing_claude_md
+
+# Copy host CLAUDE.md if provided
+- name: Copy host CLAUDE.md to VM
+  when: host_claude_md.stat.exists and not existing_claude_md.stat.exists
+  ansible.builtin.copy:
+    src: "{{ buildlog_host_claude_md_path }}"
+    dest: "{{ user_home }}/.claude/CLAUDE.md"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0640"
+    remote_src: true
+
+# Create minimal default if no host CLAUDE.md and none exists
+- name: Create minimal default CLAUDE.md
+  when: not host_claude_md.stat.exists and not existing_claude_md.stat.exists
+  ansible.builtin.template:
+    src: CLAUDE.md.default.j2
+    dest: "{{ user_home }}/.claude/CLAUDE.md"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0640"
+
+# Step 2: Run buildlog init-mcp --global (appends buildlog's standard instructions)
+- name: Run buildlog init-mcp to register MCP and update CLAUDE.md
+  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog init-mcp --global -y"
+  environment:
+    HOME: "{{ user_home }}"
+  register: buildlog_init_mcp
+  changed_when: "'already registered' not in buildlog_init_mcp.stdout"
+
+- name: Display buildlog init-mcp result
+  ansible.builtin.debug:
+    msg: "{{ buildlog_init_mcp.stdout }}"
+
+# Step 3: Append our sandbox-specific aggressive notes
+- name: Check if sandbox notes already appended
+  ansible.builtin.command: grep -q "OPENCLAW SANDBOX BUILDLOG POLICY" "{{ user_home }}/.claude/CLAUDE.md"
+  register: sandbox_notes_check
+  changed_when: false
+  failed_when: false
+
+- name: Append sandbox-specific buildlog notes
+  when: sandbox_notes_check.rc != 0
+  ansible.builtin.blockinfile:
+    path: "{{ user_home }}/.claude/CLAUDE.md"
+    marker: "<!-- {mark} OPENCLAW SANDBOX BUILDLOG POLICY -->"
+    block: |
+
+      ## OpenClaw Sandbox: AGGRESSIVE buildlog Usage
+
+      **This sandbox is configured for maximum buildlog integration. USE IT FOR EVERYTHING.**
+
+      ### MANDATORY Core Loop
+
+      After EVERY commit, refactor, or significant code change:
+
+      1. `buildlog_overview()` — check project state
+      2. `buildlog_commit(message="...")` — ALWAYS use instead of raw git commit
+      3. `buildlog_gauntlet_rules()` — load reviewer personas
+      4. `buildlog_gauntlet_issues([...])` — log any findings
+      5. `buildlog_log_reward(outcome="accepted"|"rejected")` — close the feedback loop
+
+      ### When to Use (Be Aggressive)
+
+      | Situation | Action |
+      |-----------|--------|
+      | Starting any session | `buildlog_overview()` |
+      | Making ANY git commit | `buildlog_commit()` (NOT raw git) |
+      | Finishing a feature/fix | `buildlog_gauntlet_loop()` |
+      | Something works well | `buildlog_log_reward(outcome="accepted")` |
+      | Something fails/breaks | `buildlog_log_reward(outcome="rejected")` + `buildlog_log_mistake()` |
+      | Unsure about a pattern | Check `buildlog_skills()` |
+      | Starting new work | `buildlog_entry_new(slug)` |
+
+      **Philosophy:** Every decision, every outcome, every correction should be captured.
+      Without capture, there is no learning. The sandbox is isolated — capture everything.
+
+      ### Sandbox Environment
+
+      - **VM**: Ubuntu 24.04 via Lima (isolated from host)
+      - **Network**: UFW firewall with explicit allowlist
+      - **Secrets**: `/etc/openclaw/secrets.env` (0600, never in logs)
+      - **OpenClaw**: `/mnt/openclaw`
+      - **Vault**: `/mnt/obsidian` (if mounted)
+
+# Test MCP server
+- name: Test buildlog MCP availability
+  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog mcp-test"
+  register: mcp_test
+  changed_when: false
+  failed_when: false
+  environment:
+    HOME: "{{ user_home }}"
+
+- name: Display MCP test result
+  ansible.builtin.debug:
+    msg: |
+      {% if mcp_test.rc == 0 %}
+      ✅ buildlog MCP server ready ({{ mcp_test.stdout | regex_search('\\d+ tools') | default('tools registered') }})
+      {% else %}
+      ⚠️  MCP test returned non-zero (this is OK if tools are listed)
+      {% endif %}
+
+- name: Buildlog installation complete
+  ansible.builtin.debug:
+    msg: |
+      ════════════════════════════════════════════════════════
+      buildlog installed and configured!
+
+      Version: {{ buildlog_version_result.stdout }}
+      MCP Server: registered via init-mcp --global
+      CLAUDE.md: {{ user_home }}/.claude/CLAUDE.md
+        {% if host_claude_md.stat.exists %}
+        (copied from host + buildlog + sandbox notes)
+        {% else %}
+        (default + buildlog + sandbox notes)
+        {% endif %}
+
+      Commands (from VM):
+        buildlog overview     # check state
+        buildlog new slug     # start session
+        buildlog commit -m "" # wrap git commits
+        buildlog skills       # render to agent files
+
+      Claude Code now has access to all buildlog MCP tools.
+      ════════════════════════════════════════════════════════

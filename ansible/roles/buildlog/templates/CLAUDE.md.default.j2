@@ -1,0 +1,29 @@
+# OpenClaw Sandbox
+
+This is a sandboxed VM environment for running AI agents with security isolation.
+
+## Environment
+
+- **VM**: Ubuntu 24.04 via Lima
+- **User**: {{ ansible_user }}
+- **OpenClaw**: /mnt/openclaw
+- **Obsidian Vault**: /mnt/obsidian (if mounted)
+
+## Security
+
+- Network traffic is restricted via UFW firewall
+- Secrets are stored in `/etc/openclaw/secrets.env` (mode 0600)
+- The VM is isolated from the host system
+
+## Getting Started
+
+```bash
+# Check gateway status
+systemctl status openclaw-gateway
+
+# View logs
+journalctl -u openclaw-gateway -f
+
+# Run OpenClaw commands
+cd /mnt/openclaw && bun run ...
+```
