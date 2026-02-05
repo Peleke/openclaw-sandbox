@@ -260,22 +260,41 @@ EOF
 
 ## Telegram Integration
 
-The sandbox supports Telegram bot integration for ambient agent access:
+The sandbox supports Telegram bot integration with **pairing-based access control** (no open access by default).
+
+### Setup
 
 ```bash
 # Add your bot token to secrets
 echo 'TELEGRAM_BOT_TOKEN=your-bot-token' >> ~/.openclaw-secrets.env
 
-# Re-provision to apply
-./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.openclaw-secrets.env
+# Bootstrap with your Telegram user ID pre-approved
+./bootstrap.sh --openclaw ~/Projects/openclaw \
+  --secrets ~/.openclaw-secrets.env \
+  -e "telegram_user_id=YOUR_TELEGRAM_ID"
 ```
 
-The provisioning automatically:
-- Sets `dmPolicy: "open"` with `allowFrom: ["*"]` (anyone can message)
-- Fixes workspace paths for Linux VM
-- Starts the gateway with Telegram long-polling enabled
+> Get your Telegram user ID by messaging [@userinfobot](https://t.me/userinfobot) on Telegram.
 
-### Testing Telegram
+### Access Control
+
+The sandbox uses OpenClaw's built-in pairing system (`dmPolicy: "pairing"`):
+
+| Scenario | What happens |
+|----------|-------------|
+| **Your ID pre-seeded** (`-e telegram_user_id=...`) | You can message immediately |
+| **Unknown sender messages bot** | Bot shows a pairing code |
+| **Owner approves code** | Sender gets added to allow list |
+
+```bash
+# Approve a pairing code (from host)
+limactl shell openclaw-sandbox -- claw pair approve <CODE>
+
+# List pending pairing requests
+limactl shell openclaw-sandbox -- claw pair list
+```
+
+### Verifying
 
 ```bash
 # Check gateway status

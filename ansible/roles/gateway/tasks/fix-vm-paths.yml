@@ -31,18 +31,31 @@
           }, recursive=true) }}
       when: openclaw_config.agents.defaults.workspace is defined and '/Users/' in (openclaw_config.agents.defaults.workspace | default(''))
 
-    - name: Fix Telegram dmPolicy for sandbox (open access)
+    - name: Set Telegram dmPolicy to pairing (secure default)
       ansible.builtin.set_fact:
         openclaw_config: >-
           {{ openclaw_config | combine({
             'channels': openclaw_config.channels | default({}) | combine({
               'telegram': (openclaw_config.channels.telegram | default({})) | combine({
-                'dmPolicy': 'open',
-                'allowFrom': ['*']
+                'dmPolicy': 'pairing'
               })
             })
           }, recursive=true) }}
       when: openclaw_config.channels.telegram is defined
+
+    - name: Pre-seed Telegram allowFrom with owner ID (if provided)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'channels': openclaw_config.channels | default({}) | combine({
+              'telegram': (openclaw_config.channels.telegram | default({})) | combine({
+                'allowFrom': [telegram_user_id | string]
+              })
+            })
+          }, recursive=true) }}
+      when: >
+        openclaw_config.channels.telegram is defined and
+        telegram_user_id is defined and telegram_user_id | string | length > 0
 
     - name: Write fixed config
       ansible.builtin.copy:
@@ -61,4 +74,9 @@
         msg: |
           Applied VM path fixes:
           - workspace: {{ user_home }}/.openclaw/workspace
-          - dmPolicy: open (with allowFrom: ["*"])
+          - dmPolicy: pairing (unknown senders get a pairing code)
+          {% if telegram_user_id is defined and telegram_user_id | string | length > 0 %}
+          - allowFrom: [{{ telegram_user_id }}] (pre-seeded owner)
+          {% else %}
+          - allowFrom: not pre-seeded (approve via: claw pair approve <code>)
+          {% endif %}
