@@ -92,6 +92,30 @@
             mode: "0644"
           notify: Reload systemd
 
+    # Clean up stale obsidian mount unit (vault was previously mounted but isn't now)
+    - name: Clean up stale obsidian mount unit (if vault NOT mounted)
+      when: not obsidian_mount_check.stat.exists
+      block:
+        - name: Check if stale obsidian mount unit exists
+          ansible.builtin.stat:
+            path: /etc/systemd/system/workspace\x2dobsidian.mount
+          register: stale_obsidian_unit
+
+        - name: Stop stale obsidian mount
+          when: stale_obsidian_unit.stat.exists
+          ansible.builtin.systemd:
+            name: workspace\\x2dobsidian.mount
+            state: stopped
+            enabled: false
+          failed_when: false
+
+        - name: Remove stale obsidian mount unit file
+          when: stale_obsidian_unit.stat.exists
+          ansible.builtin.file:
+            path: /etc/systemd/system/workspace\x2dobsidian.mount
+            state: absent
+          notify: Reload systemd
+
     # Deploy audit watcher service
     - name: Deploy overlay watcher service
       ansible.builtin.template:

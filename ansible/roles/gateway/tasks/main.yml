@@ -204,6 +204,12 @@
   args:
     creates: "{{ workspace_path }}/dist/index.js"
 
+# Check if obsidian vault overlay is available
+- name: Check if obsidian vault mount exists
+  ansible.builtin.stat:
+    path: /mnt/obsidian
+  register: obsidian_vault_mount
+
 # Create systemd service for gateway
 - name: Create gateway systemd service
   become: true
@@ -228,6 +234,9 @@
       WorkingDirectory={{ workspace_path }}
       Environment=HOME={{ user_home }}
       Environment=PATH={{ user_home }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
+      {% if obsidian_vault_mount.stat.exists %}
+      Environment=OBSIDIAN_VAULT_PATH=/workspace-obsidian
+      {% endif %}
       # Load secrets from /etc/openclaw/secrets.env (- prefix = don't fail if missing)
       EnvironmentFile=-/etc/openclaw/secrets.env
       ExecStart=/usr/bin/node dist/index.js gateway --bind lan --port 18789 --allow-unconfigured
