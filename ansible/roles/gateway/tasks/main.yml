@@ -79,66 +79,96 @@
   environment:
     HOME: "{{ user_home }}"
 
-# Handle config/auth - link from mount or create fresh
+# Handle config/auth - copy config files from mount, symlink agent data separately
+# Strategy: ~/.openclaw/ is always a real directory (never a symlink).
+# Config files are COPIED from the read-only mount so fix-vm-paths.yml can patch them.
+# Agent data (green.db, learning.db) is symlinked to a writable mount for persistence.
+
+- name: Ensure ~/.openclaw directory exists
+  ansible.builtin.file:
+    path: "{{ user_home }}/.openclaw"
+    state: directory
+    mode: "0750"
+
+# Remove legacy symlink if present (from previous bootstrap versions)
+- name: Check if ~/.openclaw is a symlink (legacy)
+  ansible.builtin.stat:
+    path: "{{ user_home }}/.openclaw"
+  register: openclaw_dir_stat
+
+- name: Remove legacy ~/.openclaw symlink
+  when: openclaw_dir_stat.stat.islnk | default(false)
+  block:
+    - name: Remove symlink
+      ansible.builtin.file:
+        path: "{{ user_home }}/.openclaw"
+        state: absent
+
+    - name: Recreate as real directory
+      ansible.builtin.file:
+        path: "{{ user_home }}/.openclaw"
+        state: directory
+        mode: "0750"
+
+# Copy config files from mount (if available)
 - name: Check if config mount exists
   ansible.builtin.stat:
     path: /mnt/openclaw-config
   register: config_mount
 
-- name: Check if ~/.openclaw exists
+- name: Copy config files from mount
+  when: config_mount.stat.exists
+  ansible.builtin.shell: |
+    for f in /mnt/openclaw-config/*.json; do
+      [ -f "$f" ] && cp "$f" "{{ user_home }}/.openclaw/"
+    done
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+# Agent data persistence — symlink to writable mount
+- name: Check if agent data mount exists
   ansible.builtin.stat:
-    path: "{{ user_home }}/.openclaw"
-  register: openclaw_config
+    path: "{{ agent_data_mount | default('') }}"
+  register: agent_data_mount_check
+  when: agent_data_mount | default('') | length > 0
 
-# Fix: Handle existing empty directory - replace with symlink if mount available
-- name: Check if ~/.openclaw is empty directory (not symlink)
-  when: openclaw_config.stat.exists and openclaw_config.stat.isdir and not openclaw_config.stat.islnk
-  ansible.builtin.find:
-    paths: "{{ user_home }}/.openclaw"
-    file_type: any
-  register: openclaw_config_contents
+- name: Check existing agents directory
+  ansible.builtin.stat:
+    path: "{{ user_home }}/.openclaw/agents"
+  register: existing_agents
 
-- name: Remove empty ~/.openclaw directory (to replace with symlink)
+- name: Remove existing agents directory if mount available
   when: >
-    config_mount.stat.exists and
-    openclaw_config.stat.exists and
-    openclaw_config.stat.isdir and
-    not openclaw_config.stat.islnk and
-    (openclaw_config_contents.matched | default(0)) == 0
+    (agent_data_mount_check.stat.exists | default(false)) and
+    (existing_agents.stat.exists | default(false)) and
+    (existing_agents.stat.isdir | default(false)) and
+    not (existing_agents.stat.islnk | default(false))
   ansible.builtin.file:
-    path: "{{ user_home }}/.openclaw"
+    path: "{{ user_home }}/.openclaw/agents"
     state: absent
 
-# Re-check after potential removal
-- name: Re-check ~/.openclaw after cleanup
-  ansible.builtin.stat:
-    path: "{{ user_home }}/.openclaw"
-  register: openclaw_config_recheck
-
-- name: Link config from mount (if mounted and no existing config)
-  when: config_mount.stat.exists and not openclaw_config_recheck.stat.exists
+- name: Symlink agents directory to persistent mount
+  when: agent_data_mount_check.stat.exists | default(false)
   ansible.builtin.file:
-    src: /mnt/openclaw-config
-    dest: "{{ user_home }}/.openclaw"
+    src: "{{ agent_data_mount }}"
+    dest: "{{ user_home }}/.openclaw/agents"
     state: link
-
-- name: Create ~/.openclaw directory (if no mount and no existing)
-  when: not config_mount.stat.exists and not openclaw_config_recheck.stat.exists
-  ansible.builtin.file:
-    path: "{{ user_home }}/.openclaw"
-    state: directory
-    mode: "0750"
+    force: true
 
 - name: Display config status
   ansible.builtin.debug:
     msg: >-
       Config status:
       {% if config_mount.stat.exists %}
-      Using mounted config from host
-      {% elif openclaw_config.stat.exists %}
-      Using existing config
+      Config files copied from host mount (local writable copy)
       {% else %}
       Fresh config directory created - run onboard to configure
+      {% endif %}
+      {% if agent_data_mount_check.stat.exists | default(false) %}
+      | Agent data: symlinked to {{ agent_data_mount }} (persistent)
+      {% else %}
+      | Agent data: ephemeral (no --agent-data mount)
       {% endif %}
 
 # Fix VM-specific paths (macOS paths don't work in Linux)

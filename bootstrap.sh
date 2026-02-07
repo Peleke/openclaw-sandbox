@@ -17,8 +17,9 @@ LIMA_CONFIG="${SCRIPT_DIR}/lima/${VM_NAME}.generated.yaml"
 # User-configurable paths (set via flags)
 OPENCLAW_PATH=""
 VAULT_PATH=""
-CONFIG_PATH=""   # Optional: mount host ~/.openclaw for auth/config
-SECRETS_PATH=""  # Optional: mount a secrets .env file
+CONFIG_PATH=""       # Optional: mount host ~/.openclaw for auth/config
+AGENT_DATA_PATH=""   # Optional: mount host ~/.openclaw/agents for persistent agent data
+SECRETS_PATH=""      # Optional: mount a secrets .env file
 
 # Overlay mode flags
 YOLO_MODE=false      # --yolo: overlay + auto-sync timer
@@ -68,6 +69,8 @@ Options:
                     Example: --secrets ~/.openclaw-secrets.env
   --config PATH     Mount host openclaw config at ~/.openclaw in VM (for auth/creds)
                     Example: --config ~/.openclaw
+  --agent-data PATH Mount host agent data dir for persistent green/learning DBs
+                    Example: --agent-data ~/.openclaw/agents
   --vault PATH      Mount an Obsidian vault at /mnt/obsidian (read/write)
                     Example: --vault "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault"
   --no-docker       Skip Docker + sandbox installation (lighter VM)
@@ -98,7 +101,7 @@ Environment variables:
 Examples:
   ./bootstrap.sh --openclaw ~/Projects/openclaw
   ./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.openclaw-secrets.env
-  ./bootstrap.sh --openclaw ~/Projects/openclaw --config ~/.openclaw
+  ./bootstrap.sh --openclaw ~/Projects/openclaw --config ~/.openclaw --agent-data ~/.openclaw/agents
   ./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
   ./bootstrap.sh --openclaw ../openclaw -e "secrets_anthropic_api_key=sk-ant-xxx"
   ./bootstrap.sh --openclaw ../openclaw --yolo          # Auto-sync mode
@@ -193,6 +196,16 @@ generate_lima_config() {
         fi
     fi
 
+    # Validate agent-data path if specified
+    local agent_data_path=""
+    if [[ -n "$AGENT_DATA_PATH" ]]; then
+        agent_data_path="$(expand_path "$AGENT_DATA_PATH")"
+        if [[ ! -d "$agent_data_path" ]]; then
+            log_warn "Agent data path does not exist, creating: $agent_data_path"
+            mkdir -p "$agent_data_path"
+        fi
+    fi
+
     # Validate secrets path if specified
     local secrets_path=""
     if [[ -n "$SECRETS_PATH" ]]; then
@@ -267,12 +280,22 @@ EOF
     fi
 
     # Add config mount if specified (maps to /mnt/openclaw-config in VM)
-    # The gateway role will symlink this to ~/.openclaw
+    # The gateway role will copy config files from this mount into ~/.openclaw/
     if [[ -n "$config_path" ]]; then
         cat >> "$LIMA_CONFIG" << EOF
   - location: "${config_path}"
     mountPoint: "/mnt/openclaw-config"
     writable: ${config_writable}
+EOF
+    fi
+
+    # Add agent-data mount if specified (maps to /mnt/openclaw-agents in VM)
+    # Always writable — contains only SQLite DBs (green.db, learning.db)
+    if [[ -n "$agent_data_path" ]]; then
+        cat >> "$LIMA_CONFIG" << EOF
+  - location: "${agent_data_path}"
+    mountPoint: "/mnt/openclaw-agents"
+    writable: true
 EOF
     fi
 
@@ -359,6 +382,9 @@ EOF
         local config_mode="read-only"
         [[ "$config_writable" == "true" ]] && config_mode="read-write"
         log_info "  /mnt/openclaw-config -> $config_path ($config_mode)"
+    fi
+    if [[ -n "$agent_data_path" ]]; then
+        log_info "  /mnt/openclaw-agents -> $agent_data_path (read-write, persistent)"
     fi
     if [[ -n "$secrets_path" ]]; then
         log_info "  /mnt/secrets -> $(dirname "$secrets_path") (secrets dir, read-only)"
@@ -504,6 +530,7 @@ EOF
         -e "overlay_yolo_mode=${YOLO_MODE}" \
         -e "overlay_yolo_unsafe=${YOLO_UNSAFE}" \
         -e "docker_enabled=${DOCKER_ENABLED}" \
+        -e "agent_data_mount=${AGENT_DATA_PATH:+/mnt/openclaw-agents}" \
         ${ANSIBLE_EXTRA_VARS[@]+"${ANSIBLE_EXTRA_VARS[@]}"}
 
     local ansible_exit=$?
@@ -543,6 +570,15 @@ verify_mounts() {
             failed=1
         else
             log_info "/mnt/obsidian ✓"
+        fi
+    fi
+
+    if [[ -n "$AGENT_DATA_PATH" ]]; then
+        if ! limactl shell "${VM_NAME}" -- test -d /mnt/openclaw-agents; then
+            log_warn "Mount /mnt/openclaw-agents not accessible"
+            failed=1
+        else
+            log_info "/mnt/openclaw-agents ✓"
         fi
     fi
 
@@ -628,6 +664,14 @@ parse_args() {
                     exit 1
                 fi
                 CONFIG_PATH="$2"
+                shift
+                ;;
+            --agent-data)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--agent-data requires a path argument"
+                    exit 1
+                fi
+                AGENT_DATA_PATH="$2"
                 shift
                 ;;
             --secrets)
