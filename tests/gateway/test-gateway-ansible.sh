@@ -129,6 +129,34 @@ else
   log_fail "Copied config files missing owner (gateway EACCES crash)"
 fi
 
+# Test: Identity directories copied from config mount
+if grep -q "Copy identity directories from config mount" "$TASKS_FILE"; then
+  log_pass "Copies identity directories from config mount"
+else
+  log_fail "Missing identity directory copy (device auth, telegram pairing lost on recreate)"
+fi
+
+# Test: Identity copy sets owner
+if grep -A8 "Copy identity directories from config mount" "$TASKS_FILE" | grep -q "owner:"; then
+  log_pass "Identity directory copy sets owner"
+else
+  log_fail "Identity directory copy missing owner"
+fi
+
+# Test: Identity dirs defined in defaults
+DEFAULTS_FILE="$ROLE_DIR/defaults/main.yml"
+if [[ -f "$DEFAULTS_FILE" ]]; then
+  for dir in identity credentials dotfiles; do
+    if grep -q "$dir" "$DEFAULTS_FILE"; then
+      log_pass "Identity defaults include '$dir' directory"
+    else
+      log_fail "Identity defaults missing '$dir' directory"
+    fi
+  done
+else
+  log_fail "Gateway defaults/main.yml not found (identity dirs not configurable)"
+fi
+
 echo ""
 
 # ============================================================
@@ -234,6 +262,20 @@ if [[ -f "$FIX_PATHS_FILE" ]]; then
     log_fail "fix-vm-paths references mount directly (should use local copy)"
   else
     log_pass "fix-vm-paths does not reference mount path directly"
+  fi
+
+  # Test: Workspace directory is world-readable (Docker sandbox containers need this)
+  if grep -A6 "Create workspace directory" "$FIX_PATHS_FILE" | grep -q '0755'; then
+    log_pass "Workspace directory mode 0755 (Docker sandbox can read it)"
+  else
+    log_fail "Workspace directory too restrictive — Docker sandbox agents can't read it"
+  fi
+
+  # Test: Workspace directory sets owner/group
+  if grep -A6 "Create workspace directory" "$FIX_PATHS_FILE" | grep -q "owner:"; then
+    log_pass "Workspace directory sets owner"
+  else
+    log_fail "Workspace directory missing owner"
   fi
 else
   log_fail "fix-vm-paths.yml not found"
