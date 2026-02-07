@@ -34,7 +34,14 @@
     mode: "0750"
 
 # Ensure ~/.buildlog exists (guard for when buildlog role is disabled)
-- name: Ensure buildlog directory exists for interop config
+# Skip owner/group/mode to avoid chown failures on Lima mount symlinks
+- name: Check if buildlog directory exists
+  ansible.builtin.stat:
+    path: "{{ user_home }}/.buildlog"
+  register: buildlog_dir_check
+
+- name: Create buildlog directory for interop config (if missing)
+  when: not buildlog_dir_check.stat.exists
   ansible.builtin.file:
     path: "{{ user_home }}/.buildlog"
     state: directory
