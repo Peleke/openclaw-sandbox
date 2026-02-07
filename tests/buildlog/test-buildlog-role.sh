@@ -219,7 +219,48 @@ fi
 echo ""
 
 # ============================================================
-# SECTION 6: MCP Server Test
+# SECTION 6: Buildlog Data Persistence
+# ============================================================
+echo "▸ Buildlog Data Persistence"
+echo ""
+
+# Test: ~/.buildlog exists (directory or symlink)
+if vm_exec_quiet "test -e ~/.buildlog"; then
+  log_pass "~/.buildlog exists"
+
+  # Test: Check if it's a symlink (persistent mount) or directory (ephemeral)
+  if vm_exec_quiet "test -L ~/.buildlog"; then
+    SYMLINK_TARGET=$(vm_exec "readlink ~/.buildlog" 2>/dev/null)
+    log_pass "~/.buildlog is symlink -> $SYMLINK_TARGET (persistent)"
+  else
+    log_info "~/.buildlog is a regular directory (ephemeral, no --buildlog-data mount)"
+  fi
+else
+  log_fail "~/.buildlog does not exist"
+fi
+
+# Test: Emissions directories
+for subdir in pending processed failed; do
+  if vm_exec_quiet "test -d ~/.buildlog/emissions/$subdir"; then
+    log_pass "Emissions dir exists: emissions/$subdir"
+  else
+    log_fail "Emissions dir missing: emissions/$subdir"
+  fi
+done
+
+# Test: buildlog verify
+VERIFY_OUTPUT=$(vm_exec "~/.local/bin/buildlog verify" 2>&1 || true)
+if [[ -n "$VERIFY_OUTPUT" ]]; then
+  log_pass "buildlog verify ran"
+  log_info "Output: $(echo "$VERIFY_OUTPUT" | head -2)"
+else
+  log_info "buildlog verify produced no output"
+fi
+
+echo ""
+
+# ============================================================
+# SECTION 7: MCP Server Test
 # ============================================================
 echo "▸ MCP Server"
 echo ""
