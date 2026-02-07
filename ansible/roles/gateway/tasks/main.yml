@@ -100,6 +100,8 @@
   ansible.builtin.file:
     path: "{{ user_home }}/.openclaw"
     state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
     mode: "0750"
 
 # Copy config files from mount (if available)
@@ -121,6 +123,8 @@
   ansible.builtin.copy:
     src: "{{ item.path }}"
     dest: "{{ user_home }}/.openclaw/{{ item.path | basename }}"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
     mode: "0640"
     remote_src: true
   loop: "{{ config_files_on_mount.files }}"
