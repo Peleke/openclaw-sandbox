@@ -871,6 +871,24 @@ main() {
         log_info "Sync to host: scripts/sync-gate.sh"
     fi
 
+    # Print gateway dashboard URL with password (if config available)
+    local gw_password=""
+    if [[ -n "$CONFIG_PATH" ]]; then
+        local config_json
+        config_json="$(expand_path "$CONFIG_PATH")/openclaw.json"
+        if [[ -f "$config_json" ]] && command -v jq &>/dev/null; then
+            gw_password=$(jq -r '.gateway.auth.password // empty' "$config_json" 2>/dev/null || true)
+        fi
+    fi
+
+    echo ""
+    log_info "Gateway dashboard: http://127.0.0.1:18789"
+    if [[ -n "$gw_password" ]]; then
+        log_info "  With auth:  http://127.0.0.1:18789/?password=${gw_password}"
+    fi
+    log_info "  Green:      http://127.0.0.1:18789/__openclaw__/api/green/dashboard"
+    log_info "  Learning:   http://127.0.0.1:18789/__openclaw__/api/learning/dashboard"
+
     echo ""
     log_info "Telegram: dmPolicy=pairing (unknown senders get a pairing code)"
     log_info "  Pre-approve your ID: -e \"telegram_user_id=YOUR_ID\""
