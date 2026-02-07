@@ -19,6 +19,7 @@ OPENCLAW_PATH=""
 VAULT_PATH=""
 CONFIG_PATH=""       # Optional: mount host ~/.openclaw for auth/config
 AGENT_DATA_PATH=""   # Optional: mount host ~/.openclaw/agents for persistent agent data
+BUILDLOG_DATA_PATH="" # Optional: mount host ~/.buildlog for persistent buildlog data
 SECRETS_PATH=""      # Optional: mount a secrets .env file
 
 # Overlay mode flags
@@ -71,6 +72,8 @@ Options:
                     Example: --config ~/.openclaw
   --agent-data PATH Mount host agent data dir for persistent green/learning DBs
                     Example: --agent-data ~/.openclaw/agents
+  --buildlog-data PATH  Mount host buildlog dir for persistent buildlog.db + emissions
+                    Example: --buildlog-data ~/.buildlog
   --vault PATH      Mount an Obsidian vault at /mnt/obsidian (read/write)
                     Example: --vault "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault"
   --no-docker       Skip Docker + sandbox installation (lighter VM)
@@ -101,7 +104,7 @@ Environment variables:
 Examples:
   ./bootstrap.sh --openclaw ~/Projects/openclaw
   ./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.openclaw-secrets.env
-  ./bootstrap.sh --openclaw ~/Projects/openclaw --config ~/.openclaw --agent-data ~/.openclaw/agents
+  ./bootstrap.sh --openclaw ~/Projects/openclaw --config ~/.openclaw --agent-data ~/.openclaw/agents --buildlog-data ~/.buildlog
   ./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
   ./bootstrap.sh --openclaw ../openclaw -e "secrets_anthropic_api_key=sk-ant-xxx"
   ./bootstrap.sh --openclaw ../openclaw --yolo          # Auto-sync mode
@@ -206,6 +209,16 @@ generate_lima_config() {
         fi
     fi
 
+    # Validate buildlog-data path if specified
+    local buildlog_data_path=""
+    if [[ -n "$BUILDLOG_DATA_PATH" ]]; then
+        buildlog_data_path="$(expand_path "$BUILDLOG_DATA_PATH")"
+        if [[ ! -d "$buildlog_data_path" ]]; then
+            log_warn "Buildlog data path does not exist, creating: $buildlog_data_path"
+            mkdir -p "$buildlog_data_path"
+        fi
+    fi
+
     # Validate secrets path if specified
     local secrets_path=""
     if [[ -n "$SECRETS_PATH" ]]; then
@@ -299,6 +312,16 @@ EOF
 EOF
     fi
 
+    # Add buildlog-data mount if specified (maps to /mnt/buildlog-data in VM)
+    # Always writable — contains SQLite DB + emissions
+    if [[ -n "$buildlog_data_path" ]]; then
+        cat >> "$LIMA_CONFIG" << EOF
+  - location: "${buildlog_data_path}"
+    mountPoint: "/mnt/buildlog-data"
+    writable: true
+EOF
+    fi
+
     # Add secrets file mount if specified
     # Lima requires directory mounts, so we mount the parent directory
     # and the Ansible role will look for the specific file
@@ -385,6 +408,9 @@ EOF
     fi
     if [[ -n "$agent_data_path" ]]; then
         log_info "  /mnt/openclaw-agents -> $agent_data_path (read-write, persistent)"
+    fi
+    if [[ -n "$buildlog_data_path" ]]; then
+        log_info "  /mnt/buildlog-data   -> $buildlog_data_path (read-write, persistent)"
     fi
     if [[ -n "$secrets_path" ]]; then
         log_info "  /mnt/secrets -> $(dirname "$secrets_path") (secrets dir, read-only)"
@@ -531,6 +557,7 @@ EOF
         -e "overlay_yolo_unsafe=${YOLO_UNSAFE}" \
         -e "docker_enabled=${DOCKER_ENABLED}" \
         -e "agent_data_mount=${AGENT_DATA_PATH:+/mnt/openclaw-agents}" \
+        -e "buildlog_data_mount=${BUILDLOG_DATA_PATH:+/mnt/buildlog-data}" \
         ${ANSIBLE_EXTRA_VARS[@]+"${ANSIBLE_EXTRA_VARS[@]}"}
 
     local ansible_exit=$?
@@ -579,6 +606,15 @@ verify_mounts() {
             failed=1
         else
             log_info "/mnt/openclaw-agents ✓"
+        fi
+    fi
+
+    if [[ -n "$BUILDLOG_DATA_PATH" ]]; then
+        if ! limactl shell "${VM_NAME}" -- test -d /mnt/buildlog-data; then
+            log_warn "Mount /mnt/buildlog-data not accessible"
+            failed=1
+        else
+            log_info "/mnt/buildlog-data ✓"
         fi
     fi
 
@@ -672,6 +708,14 @@ parse_args() {
                     exit 1
                 fi
                 AGENT_DATA_PATH="$2"
+                shift
+                ;;
+            --buildlog-data)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--buildlog-data requires a path argument"
+                    exit 1
+                fi
+                BUILDLOG_DATA_PATH="$2"
                 shift
                 ;;
             --secrets)

@@ -12,6 +12,47 @@
   ansible.builtin.set_fact:
     user_home: "{{ user_home_result.stdout }}"
 
+# ~/.buildlog persistence — symlink to writable mount or create local dir
+- name: Check if buildlog data mount exists
+  ansible.builtin.stat:
+    path: "{{ buildlog_data_mount | default('') }}"
+  register: buildlog_data_mount_check
+  when: buildlog_data_mount | default('') | length > 0
+
+- name: Check existing buildlog data directory
+  ansible.builtin.stat:
+    path: "{{ user_home }}/.buildlog"
+  register: existing_buildlog_dir
+
+- name: Remove existing buildlog directory if mount available
+  when: >
+    (buildlog_data_mount_check.stat.exists | default(false)) and
+    (existing_buildlog_dir.stat.exists | default(false)) and
+    (existing_buildlog_dir.stat.isdir | default(false)) and
+    not (existing_buildlog_dir.stat.islnk | default(false))
+  ansible.builtin.file:
+    path: "{{ user_home }}/.buildlog"
+    state: absent
+
+- name: Symlink buildlog data directory to persistent mount
+  when: buildlog_data_mount_check.stat.exists | default(false)
+  ansible.builtin.file:
+    src: "{{ buildlog_data_mount }}"
+    dest: "{{ user_home }}/.buildlog"
+    state: link
+    force: true
+
+- name: Create buildlog data directory if no mount
+  when: >
+    not (buildlog_data_mount_check.stat.exists | default(false)) and
+    not (existing_buildlog_dir.stat.exists | default(false))
+  ansible.builtin.file:
+    path: "{{ user_home }}/.buildlog"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+
 # Install uv (fast Python package manager)
 - name: Check if uv is installed
   ansible.builtin.command: "{{ user_home }}/.local/bin/uv --version"
@@ -74,6 +115,52 @@
 - name: Display buildlog version
   ansible.builtin.debug:
     msg: "buildlog version: {{ buildlog_version_result.stdout }}"
+
+# Ensure emissions directories exist (for buildlog ambient capture)
+- name: Create buildlog emissions directories
+  ansible.builtin.file:
+    path: "{{ user_home }}/.buildlog/emissions/{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+  loop:
+    - pending
+    - processed
+    - failed
+
+# Initialize buildlog workspace (creates default config in ~/.buildlog)
+- name: Initialize buildlog workspace
+  when: buildlog_init_workspace | default(true) | bool
+  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog init --defaults --no-mcp --no-hooks"
+  environment:
+    HOME: "{{ user_home }}"
+  register: buildlog_init_result
+  changed_when: "'already initialized' not in (buildlog_init_result.stdout | default(''))"
+  failed_when: false
+
+# Run buildlog migrate (idempotent schema migrations)
+- name: Run buildlog migrate
+  when: buildlog_run_migrate | default(true) | bool
+  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog migrate"
+  environment:
+    HOME: "{{ user_home }}"
+  register: buildlog_migrate_result
+  changed_when: "'no pending' not in (buildlog_migrate_result.stdout | default(''))"
+  failed_when: false
+
+# Verify buildlog installation integrity
+- name: Verify buildlog installation
+  ansible.builtin.command: "{{ user_home }}/.local/bin/buildlog verify"
+  environment:
+    HOME: "{{ user_home }}"
+  register: buildlog_verify_result
+  changed_when: false
+  failed_when: false
+
+- name: Display buildlog verify result
+  ansible.builtin.debug:
+    msg: "{{ buildlog_verify_result.stdout | default('verify completed') }}"
 
 # Add uv tools to PATH in .bashrc
 - name: Ensure uv tools are in PATH
@@ -222,6 +309,12 @@
       buildlog installed and configured!
 
       Version: {{ buildlog_version_result.stdout }}
+      Data: {{ user_home }}/.buildlog
+      {% if buildlog_data_mount_check.stat.exists | default(false) %}
+        (persistent — symlinked to {{ buildlog_data_mount }})
+      {% else %}
+        (ephemeral — no --buildlog-data mount)
+      {% endif %}
       MCP Server: registered via init-mcp --global
       CLAUDE.md: {{ user_home }}/.claude/CLAUDE.md
         {% if host_claude_md.stat.exists %}
