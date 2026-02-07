@@ -146,6 +146,45 @@ validate_changes() {
         log_warn "Install with: brew install gitleaks"
     fi
 
+    # 4. Executable / binary detection
+    local binary_warnings=0
+    while IFS= read -r -d '' file; do
+        local filetype
+        filetype=$(file -b "$file" 2>/dev/null || echo "unknown")
+        case "$filetype" in
+            *ELF*|*Mach-O*|*executable*|*"shared object"*)
+                log_warn "Binary/executable: ${file#$STAGING_DIR/} ($filetype)"
+                binary_warnings=$((binary_warnings + 1))
+                ;;
+        esac
+    done < <(find "$STAGING_DIR" -type f -print0)
+
+    if [[ "$binary_warnings" -gt 0 ]]; then
+        log_warn "${binary_warnings} binary/executable file(s) detected. Review before applying."
+    fi
+
+    # 5. Extension allowlist (informational warnings only)
+    local EXPECTED_EXTENSIONS=(.ts .js .json .md .yml .yaml .sh .css .html .svg .txt .map .mjs .cjs .jsx .tsx .lock .toml .cfg .ini .py .rs .go)
+    while IFS= read -r -d '' file; do
+        local ext=".${file##*.}"
+        local basename_file
+        basename_file=$(basename "$file")
+        # Skip files with no extension (e.g. Makefile, Dockerfile)
+        if [[ "$ext" == ".$basename_file" ]]; then
+            continue
+        fi
+        local expected=false
+        for e in "${EXPECTED_EXTENSIONS[@]}"; do
+            if [[ "$ext" == "$e" ]]; then
+                expected=true
+                break
+            fi
+        done
+        if [[ "$expected" == "false" ]]; then
+            log_warn "Unexpected extension: ${file#$STAGING_DIR/} (${ext})"
+        fi
+    done < <(find "$STAGING_DIR" -type f -print0)
+
     if [[ $failed -ne 0 ]]; then
         log_error "Validation FAILED. Fix issues before syncing."
         exit 1

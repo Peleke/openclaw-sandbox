@@ -82,6 +82,11 @@
     - role: buildlog
       tags: [buildlog]
 
+    # Qortex interop (after buildlog — writes into ~/.buildlog)
+    - role: qortex
+      tags: [qortex]
+      when: qortex_enabled | default(true) | bool
+
     # Phase S10: Sandbox image + config (after gateway, needs workspace built)
     - role: sandbox
       tags: [sandbox]

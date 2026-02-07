@@ -17,8 +17,10 @@ LIMA_CONFIG="${SCRIPT_DIR}/lima/${VM_NAME}.generated.yaml"
 # User-configurable paths (set via flags)
 OPENCLAW_PATH=""
 VAULT_PATH=""
-CONFIG_PATH=""   # Optional: mount host ~/.openclaw for auth/config
-SECRETS_PATH=""  # Optional: mount a secrets .env file
+CONFIG_PATH=""       # Optional: mount host ~/.openclaw for auth/config
+AGENT_DATA_PATH=""   # Optional: mount host ~/.openclaw/agents for persistent agent data
+BUILDLOG_DATA_PATH="" # Optional: mount host ~/.buildlog for persistent buildlog data
+SECRETS_PATH=""      # Optional: mount a secrets .env file
 
 # Overlay mode flags
 YOLO_MODE=false      # --yolo: overlay + auto-sync timer
@@ -26,6 +28,10 @@ YOLO_UNSAFE=false    # --yolo-unsafe: no overlay, rw mounts (legacy)
 
 # Docker sandbox flag
 DOCKER_ENABLED=true  # --no-docker: skip Docker installation
+
+# Memgraph flags
+MEMGRAPH_ENABLED=false    # --memgraph: forward all memgraph ports
+MEMGRAPH_PORTS=()         # --memgraph-port PORT: forward specific ports
 
 # VM resource defaults
 VM_CPUS="${VM_CPUS:-4}"
@@ -68,8 +74,14 @@ Options:
                     Example: --secrets ~/.openclaw-secrets.env
   --config PATH     Mount host openclaw config at ~/.openclaw in VM (for auth/creds)
                     Example: --config ~/.openclaw
+  --agent-data PATH Mount host agent data dir for persistent green/learning DBs
+                    Example: --agent-data ~/.openclaw/agents
+  --buildlog-data PATH  Mount host buildlog dir for persistent buildlog.db + emissions
+                    Example: --buildlog-data ~/.buildlog
   --vault PATH      Mount an Obsidian vault at /mnt/obsidian (read/write)
                     Example: --vault "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault"
+  --memgraph        Forward all Memgraph ports (7687 Bolt, 3000 Lab UI, 7444 monitoring)
+  --memgraph-port PORT  Forward a specific Memgraph port (repeatable)
   --no-docker       Skip Docker + sandbox installation (lighter VM)
   --yolo            Enable YOLO mode: overlay ON + auto-sync timer (30s)
                     Writes still go to overlay but auto-sync back to host.
@@ -98,7 +110,7 @@ Environment variables:
 Examples:
   ./bootstrap.sh --openclaw ~/Projects/openclaw
   ./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.openclaw-secrets.env
-  ./bootstrap.sh --openclaw ~/Projects/openclaw --config ~/.openclaw
+  ./bootstrap.sh --openclaw ~/Projects/openclaw --config ~/.openclaw --agent-data ~/.openclaw/agents --buildlog-data ~/.buildlog
   ./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
   ./bootstrap.sh --openclaw ../openclaw -e "secrets_anthropic_api_key=sk-ant-xxx"
   ./bootstrap.sh --openclaw ../openclaw --yolo          # Auto-sync mode
@@ -193,6 +205,26 @@ generate_lima_config() {
         fi
     fi
 
+    # Validate agent-data path if specified
+    local agent_data_path=""
+    if [[ -n "$AGENT_DATA_PATH" ]]; then
+        agent_data_path="$(expand_path "$AGENT_DATA_PATH")"
+        if [[ ! -d "$agent_data_path" ]]; then
+            log_warn "Agent data path does not exist, creating: $agent_data_path"
+            mkdir -p "$agent_data_path"
+        fi
+    fi
+
+    # Validate buildlog-data path if specified
+    local buildlog_data_path=""
+    if [[ -n "$BUILDLOG_DATA_PATH" ]]; then
+        buildlog_data_path="$(expand_path "$BUILDLOG_DATA_PATH")"
+        if [[ ! -d "$buildlog_data_path" ]]; then
+            log_warn "Buildlog data path does not exist, creating: $buildlog_data_path"
+            mkdir -p "$buildlog_data_path"
+        fi
+    fi
+
     # Validate secrets path if specified
     local secrets_path=""
     if [[ -n "$SECRETS_PATH" ]]; then
@@ -267,12 +299,32 @@ EOF
     fi
 
     # Add config mount if specified (maps to /mnt/openclaw-config in VM)
-    # The gateway role will symlink this to ~/.openclaw
+    # The gateway role will copy config files from this mount into ~/.openclaw/
     if [[ -n "$config_path" ]]; then
         cat >> "$LIMA_CONFIG" << EOF
   - location: "${config_path}"
     mountPoint: "/mnt/openclaw-config"
     writable: ${config_writable}
+EOF
+    fi
+
+    # Add agent-data mount if specified (maps to /mnt/openclaw-agents in VM)
+    # Always writable — contains only SQLite DBs (green.db, learning.db)
+    if [[ -n "$agent_data_path" ]]; then
+        cat >> "$LIMA_CONFIG" << EOF
+  - location: "${agent_data_path}"
+    mountPoint: "/mnt/openclaw-agents"
+    writable: true
+EOF
+    fi
+
+    # Add buildlog-data mount if specified (maps to /mnt/buildlog-data in VM)
+    # Always writable — contains SQLite DB + emissions
+    if [[ -n "$buildlog_data_path" ]]; then
+        cat >> "$LIMA_CONFIG" << EOF
+  - location: "${buildlog_data_path}"
+    mountPoint: "/mnt/buildlog-data"
+    writable: true
 EOF
     fi
 
@@ -291,7 +343,7 @@ EOF
 EOF
     fi
 
-    # Continue with rest of config
+    # Continue with rest of config (up to portForwards)
     cat >> "$LIMA_CONFIG" << 'EOF'
 
 # Note: Using default user-mode networking (no socket_vmnet required)
@@ -331,6 +383,33 @@ portForwards:
   - guestPort: 18789
     hostPort: 18789
     proto: tcp
+EOF
+
+    # Add memgraph port forwards if requested
+    if [[ "$MEMGRAPH_ENABLED" == "true" ]]; then
+        cat >> "$LIMA_CONFIG" << 'EOF'
+  - guestPort: 7687
+    hostPort: 7687
+    proto: tcp
+  - guestPort: 3000
+    hostPort: 3000
+    proto: tcp
+  - guestPort: 7444
+    hostPort: 7444
+    proto: tcp
+EOF
+    elif [[ ${#MEMGRAPH_PORTS[@]} -gt 0 ]]; then
+        for port in "${MEMGRAPH_PORTS[@]}"; do
+            cat >> "$LIMA_CONFIG" << EOF
+  - guestPort: ${port}
+    hostPort: ${port}
+    proto: tcp
+EOF
+        done
+    fi
+
+    # Finish with env and message
+    cat >> "$LIMA_CONFIG" << 'EOF'
 
 env:
   OPENCLAW_SANDBOX: "true"
@@ -359,6 +438,17 @@ EOF
         local config_mode="read-only"
         [[ "$config_writable" == "true" ]] && config_mode="read-write"
         log_info "  /mnt/openclaw-config -> $config_path ($config_mode)"
+    fi
+    if [[ -n "$agent_data_path" ]]; then
+        log_info "  /mnt/openclaw-agents -> $agent_data_path (read-write, persistent)"
+    fi
+    if [[ -n "$buildlog_data_path" ]]; then
+        log_info "  /mnt/buildlog-data   -> $buildlog_data_path (read-write, persistent)"
+    fi
+    if [[ "$MEMGRAPH_ENABLED" == "true" ]]; then
+        log_info "  Memgraph ports: 7687 (Bolt), 3000 (Lab UI), 7444 (monitoring)"
+    elif [[ ${#MEMGRAPH_PORTS[@]} -gt 0 ]]; then
+        log_info "  Memgraph ports: ${MEMGRAPH_PORTS[*]}"
     fi
     if [[ -n "$secrets_path" ]]; then
         log_info "  /mnt/secrets -> $(dirname "$secrets_path") (secrets dir, read-only)"
@@ -504,6 +594,9 @@ EOF
         -e "overlay_yolo_mode=${YOLO_MODE}" \
         -e "overlay_yolo_unsafe=${YOLO_UNSAFE}" \
         -e "docker_enabled=${DOCKER_ENABLED}" \
+        -e "agent_data_mount=${AGENT_DATA_PATH:+/mnt/openclaw-agents}" \
+        -e "buildlog_data_mount=${BUILDLOG_DATA_PATH:+/mnt/buildlog-data}" \
+        -e "memgraph_enabled=${MEMGRAPH_ENABLED}" \
         ${ANSIBLE_EXTRA_VARS[@]+"${ANSIBLE_EXTRA_VARS[@]}"}
 
     local ansible_exit=$?
@@ -543,6 +636,24 @@ verify_mounts() {
             failed=1
         else
             log_info "/mnt/obsidian ✓"
+        fi
+    fi
+
+    if [[ -n "$AGENT_DATA_PATH" ]]; then
+        if ! limactl shell "${VM_NAME}" -- test -d /mnt/openclaw-agents; then
+            log_warn "Mount /mnt/openclaw-agents not accessible"
+            failed=1
+        else
+            log_info "/mnt/openclaw-agents ✓"
+        fi
+    fi
+
+    if [[ -n "$BUILDLOG_DATA_PATH" ]]; then
+        if ! limactl shell "${VM_NAME}" -- test -d /mnt/buildlog-data; then
+            log_warn "Mount /mnt/buildlog-data not accessible"
+            failed=1
+        else
+            log_info "/mnt/buildlog-data ✓"
         fi
     fi
 
@@ -630,6 +741,22 @@ parse_args() {
                 CONFIG_PATH="$2"
                 shift
                 ;;
+            --agent-data)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--agent-data requires a path argument"
+                    exit 1
+                fi
+                AGENT_DATA_PATH="$2"
+                shift
+                ;;
+            --buildlog-data)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--buildlog-data requires a path argument"
+                    exit 1
+                fi
+                BUILDLOG_DATA_PATH="$2"
+                shift
+                ;;
             --secrets)
                 if [[ -z "${2:-}" ]]; then
                     log_error "--secrets requires a path argument"
@@ -644,6 +771,17 @@ parse_args() {
                     exit 1
                 fi
                 VAULT_PATH="$2"
+                shift
+                ;;
+            --memgraph)
+                MEMGRAPH_ENABLED=true
+                ;;
+            --memgraph-port)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--memgraph-port requires a port number"
+                    exit 1
+                fi
+                MEMGRAPH_PORTS+=("$2")
                 shift
                 ;;
             --no-docker)
@@ -732,6 +870,24 @@ main() {
         log_info "Services run from: /workspace"
         log_info "Sync to host: scripts/sync-gate.sh"
     fi
+
+    # Print gateway dashboard URL with password (if config available)
+    local gw_password=""
+    if [[ -n "$CONFIG_PATH" ]]; then
+        local config_json
+        config_json="$(expand_path "$CONFIG_PATH")/openclaw.json"
+        if [[ -f "$config_json" ]] && command -v jq &>/dev/null; then
+            gw_password=$(jq -r '.gateway.auth.password // empty' "$config_json" 2>/dev/null || true)
+        fi
+    fi
+
+    echo ""
+    log_info "Gateway dashboard: http://127.0.0.1:18789"
+    if [[ -n "$gw_password" ]]; then
+        log_info "  With auth:  http://127.0.0.1:18789/?password=${gw_password}"
+    fi
+    log_info "  Green:      http://127.0.0.1:18789/__openclaw__/api/green/dashboard"
+    log_info "  Learning:   http://127.0.0.1:18789/__openclaw__/api/learning/dashboard"
 
     echo ""
     log_info "Telegram: dmPolicy=pairing (unknown senders get a pairing code)"

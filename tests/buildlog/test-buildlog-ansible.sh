@@ -192,6 +192,51 @@ else
   log_info "Tasks don't verify MCP (optional)"
 fi
 
+# Test: Persistent mount handling
+if grep -q "buildlog data mount exists" "$TASKS_FILE"; then
+  log_pass "Tasks check for buildlog data mount"
+else
+  log_fail "Tasks missing buildlog data mount check"
+fi
+
+if grep -q "Symlink buildlog data directory" "$TASKS_FILE"; then
+  log_pass "Tasks symlink buildlog data to mount"
+else
+  log_fail "Tasks missing buildlog data symlink"
+fi
+
+if grep -q "/mnt/buildlog-data\|buildlog_data_mount" "$TASKS_FILE"; then
+  log_pass "Tasks reference buildlog data mount path"
+else
+  log_fail "Tasks missing buildlog data mount path"
+fi
+
+# Test: Emissions directories
+if grep -q "emissions" "$TASKS_FILE"; then
+  log_pass "Tasks create emissions directories"
+else
+  log_fail "Tasks missing emissions directory creation"
+fi
+
+# Test: Init/migrate/verify
+if grep -q "buildlog init" "$TASKS_FILE"; then
+  log_pass "Tasks run buildlog init"
+else
+  log_info "Tasks don't run buildlog init (optional)"
+fi
+
+if grep -q "buildlog migrate" "$TASKS_FILE"; then
+  log_pass "Tasks run buildlog migrate"
+else
+  log_info "Tasks don't run buildlog migrate (optional)"
+fi
+
+if grep -q "buildlog verify" "$TASKS_FILE"; then
+  log_pass "Tasks run buildlog verify"
+else
+  log_info "Tasks don't run buildlog verify (optional)"
+fi
+
 echo ""
 
 # ============================================================
@@ -203,7 +248,7 @@ echo ""
 DEFAULTS_FILE="$ROLE_DIR/defaults/main.yml"
 
 # Test: Required default variables
-for var in buildlog_version buildlog_extras buildlog_host_claude_md_path; do
+for var in buildlog_version buildlog_extras buildlog_host_claude_md_path buildlog_init_workspace buildlog_run_migrate; do
   if grep -q "^$var:" "$DEFAULTS_FILE"; then
     log_pass "Default defined: $var"
   else
