@@ -29,6 +29,10 @@ YOLO_UNSAFE=false    # --yolo-unsafe: no overlay, rw mounts (legacy)
 # Docker sandbox flag
 DOCKER_ENABLED=true  # --no-docker: skip Docker installation
 
+# Memgraph flags
+MEMGRAPH_ENABLED=false    # --memgraph: forward all memgraph ports
+MEMGRAPH_PORTS=()         # --memgraph-port PORT: forward specific ports
+
 # VM resource defaults
 VM_CPUS="${VM_CPUS:-4}"
 VM_MEMORY="${VM_MEMORY:-8GiB}"
@@ -76,6 +80,8 @@ Options:
                     Example: --buildlog-data ~/.buildlog
   --vault PATH      Mount an Obsidian vault at /mnt/obsidian (read/write)
                     Example: --vault "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault"
+  --memgraph        Forward all Memgraph ports (7687 Bolt, 3000 Lab UI, 7444 monitoring)
+  --memgraph-port PORT  Forward a specific Memgraph port (repeatable)
   --no-docker       Skip Docker + sandbox installation (lighter VM)
   --yolo            Enable YOLO mode: overlay ON + auto-sync timer (30s)
                     Writes still go to overlay but auto-sync back to host.
@@ -337,7 +343,7 @@ EOF
 EOF
     fi
 
-    # Continue with rest of config
+    # Continue with rest of config (up to portForwards)
     cat >> "$LIMA_CONFIG" << 'EOF'
 
 # Note: Using default user-mode networking (no socket_vmnet required)
@@ -377,6 +383,33 @@ portForwards:
   - guestPort: 18789
     hostPort: 18789
     proto: tcp
+EOF
+
+    # Add memgraph port forwards if requested
+    if [[ "$MEMGRAPH_ENABLED" == "true" ]]; then
+        cat >> "$LIMA_CONFIG" << 'EOF'
+  - guestPort: 7687
+    hostPort: 7687
+    proto: tcp
+  - guestPort: 3000
+    hostPort: 3000
+    proto: tcp
+  - guestPort: 7444
+    hostPort: 7444
+    proto: tcp
+EOF
+    elif [[ ${#MEMGRAPH_PORTS[@]} -gt 0 ]]; then
+        for port in "${MEMGRAPH_PORTS[@]}"; do
+            cat >> "$LIMA_CONFIG" << EOF
+  - guestPort: ${port}
+    hostPort: ${port}
+    proto: tcp
+EOF
+        done
+    fi
+
+    # Finish with env and message
+    cat >> "$LIMA_CONFIG" << 'EOF'
 
 env:
   OPENCLAW_SANDBOX: "true"
@@ -411,6 +444,11 @@ EOF
     fi
     if [[ -n "$buildlog_data_path" ]]; then
         log_info "  /mnt/buildlog-data   -> $buildlog_data_path (read-write, persistent)"
+    fi
+    if [[ "$MEMGRAPH_ENABLED" == "true" ]]; then
+        log_info "  Memgraph ports: 7687 (Bolt), 3000 (Lab UI), 7444 (monitoring)"
+    elif [[ ${#MEMGRAPH_PORTS[@]} -gt 0 ]]; then
+        log_info "  Memgraph ports: ${MEMGRAPH_PORTS[*]}"
     fi
     if [[ -n "$secrets_path" ]]; then
         log_info "  /mnt/secrets -> $(dirname "$secrets_path") (secrets dir, read-only)"
@@ -558,6 +596,7 @@ EOF
         -e "docker_enabled=${DOCKER_ENABLED}" \
         -e "agent_data_mount=${AGENT_DATA_PATH:+/mnt/openclaw-agents}" \
         -e "buildlog_data_mount=${BUILDLOG_DATA_PATH:+/mnt/buildlog-data}" \
+        -e "memgraph_enabled=${MEMGRAPH_ENABLED}" \
         ${ANSIBLE_EXTRA_VARS[@]+"${ANSIBLE_EXTRA_VARS[@]}"}
 
     local ansible_exit=$?
@@ -732,6 +771,17 @@ parse_args() {
                     exit 1
                 fi
                 VAULT_PATH="$2"
+                shift
+                ;;
+            --memgraph)
+                MEMGRAPH_ENABLED=true
+                ;;
+            --memgraph-port)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--memgraph-port requires a port number"
+                    exit 1
+                fi
+                MEMGRAPH_PORTS+=("$2")
                 shift
                 ;;
             --no-docker)

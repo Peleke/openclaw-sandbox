@@ -1,0 +1,116 @@
+---
+# Qortex Interop Role
+# Sets up seed exchange directories, installs qortex CLI, and deploys interop config
+
+# Get the actual user home directory
+- name: Get user home directory
+  ansible.builtin.shell: "getent passwd {{ ansible_user }} | cut -d: -f6"
+  register: user_home_result
+  changed_when: false
+
+- name: Set user_home fact
+  ansible.builtin.set_fact:
+    user_home: "{{ user_home_result.stdout }}"
+
+# Create qortex seed exchange directories
+- name: Create qortex seed directories
+  ansible.builtin.file:
+    path: "{{ user_home }}/.qortex/seeds/{{ item }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+  loop:
+    - pending
+    - processed
+    - failed
+
+- name: Create qortex signals directory
+  ansible.builtin.file:
+    path: "{{ user_home }}/.qortex/signals"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+
+# Ensure ~/.buildlog exists (guard for when buildlog role is disabled)
+- name: Ensure buildlog directory exists for interop config
+  ansible.builtin.file:
+    path: "{{ user_home }}/.buildlog"
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0750"
+
+# Deploy interop.yaml (buildlog <-> qortex seed exchange config)
+- name: Check if interop.yaml exists
+  ansible.builtin.stat:
+    path: "{{ user_home }}/.buildlog/interop.yaml"
+  register: interop_config
+
+- name: Deploy buildlog interop config
+  when: not interop_config.stat.exists
+  ansible.builtin.template:
+    src: interop.yaml.j2
+    dest: "{{ user_home }}/.buildlog/interop.yaml"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0640"
+
+# Install qortex CLI via uv (if enabled and uv is available)
+- name: Check if uv is installed
+  ansible.builtin.command: "{{ user_home }}/.local/bin/uv --version"
+  register: uv_check
+  changed_when: false
+  failed_when: false
+
+- name: Install uv (if not installed)
+  when: qortex_install | default(true) | bool and uv_check.rc != 0
+  ansible.builtin.shell: |
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+  args:
+    creates: "{{ user_home }}/.local/bin/uv"
+  environment:
+    HOME: "{{ user_home }}"
+
+- name: Check if qortex is installed as uv tool
+  when: qortex_install | default(true) | bool
+  ansible.builtin.shell: "{{ user_home }}/.local/bin/uv tool list | grep -q '^qortex '"
+  register: qortex_check
+  changed_when: false
+  failed_when: false
+  environment:
+    HOME: "{{ user_home }}"
+
+- name: Install qortex via uv tool
+  when: qortex_install | default(true) | bool and (qortex_check.rc | default(1)) != 0
+  ansible.builtin.shell: |
+    {{ user_home }}/.local/bin/uv tool install qortex{% if qortex_extras %}[{{ qortex_extras }}]{% endif %}
+  environment:
+    HOME: "{{ user_home }}"
+  register: qortex_install_result
+  failed_when: false
+
+- name: Display qortex install result
+  when: qortex_install_result is defined and qortex_install_result.changed | default(false)
+  ansible.builtin.debug:
+    msg: "{{ qortex_install_result.stdout | default('qortex installed') }}"
+
+- name: Qortex interop setup complete
+  ansible.builtin.debug:
+    msg: |
+      ════════════════════════════════════════════════════════
+      Qortex interop configured!
+
+      Seed exchange dirs:
+        ~/.qortex/seeds/{pending,processed,failed}
+        ~/.qortex/signals/
+
+      Interop config: ~/.buildlog/interop.yaml
+      {% if qortex_install | default(true) | bool %}
+      CLI: qortex (installed via uv tool)
+      {% endif %}
+      {% if memgraph_enabled | default(false) | bool %}
+      Memgraph ports forwarded (7687, 3000, 7444)
+      {% endif %}
+      ════════════════════════════════════════════════════════

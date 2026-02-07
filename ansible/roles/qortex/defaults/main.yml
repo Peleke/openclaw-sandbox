@@ -1,0 +1,11 @@
+---
+# Qortex Interop Role Defaults
+
+# Enable qortex seed exchange directories and interop config
+qortex_enabled: true
+
+# Install qortex CLI via uv tool
+qortex_install: true
+
+# Optional pip extras (e.g. "anthropic" for LLM features)
+qortex_extras: ""

@@ -1,0 +1,9 @@
+---
+# Buildlog <-> Qortex seed exchange interop configuration
+# Deployed by the qortex Ansible role
+sources:
+  - name: qortex
+    pending_dir: {{ user_home }}/.qortex/seeds/pending
+    processed_dir: {{ user_home }}/.qortex/seeds/processed
+    failed_dir: {{ user_home }}/.qortex/seeds/failed
+    signal_log: {{ user_home }}/.qortex/signals/projections.jsonl
