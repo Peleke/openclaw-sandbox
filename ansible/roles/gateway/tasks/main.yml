@@ -84,31 +84,23 @@
 # Config files are COPIED from the read-only mount so fix-vm-paths.yml can patch them.
 # Agent data (green.db, learning.db) is symlinked to a writable mount for persistence.
 
-- name: Ensure ~/.openclaw directory exists
-  ansible.builtin.file:
-    path: "{{ user_home }}/.openclaw"
-    state: directory
-    mode: "0750"
-
-# Remove legacy symlink if present (from previous bootstrap versions)
+# Check symlink BEFORE ensuring directory (symlink check must come first)
 - name: Check if ~/.openclaw is a symlink (legacy)
   ansible.builtin.stat:
     path: "{{ user_home }}/.openclaw"
   register: openclaw_dir_stat
 
 - name: Remove legacy ~/.openclaw symlink
-  when: openclaw_dir_stat.stat.islnk | default(false)
-  block:
-    - name: Remove symlink
-      ansible.builtin.file:
-        path: "{{ user_home }}/.openclaw"
-        state: absent
+  when: openclaw_dir_stat.stat.exists | default(false) and openclaw_dir_stat.stat.islnk | default(false)
+  ansible.builtin.file:
+    path: "{{ user_home }}/.openclaw"
+    state: absent
 
-    - name: Recreate as real directory
-      ansible.builtin.file:
-        path: "{{ user_home }}/.openclaw"
-        state: directory
-        mode: "0750"
+- name: Ensure ~/.openclaw directory exists
+  ansible.builtin.file:
+    path: "{{ user_home }}/.openclaw"
+    state: directory
+    mode: "0750"
 
 # Copy config files from mount (if available)
 - name: Check if config mount exists
@@ -116,17 +108,26 @@
     path: /mnt/openclaw-config
   register: config_mount
 
-- name: Copy config files from mount
+- name: Find config files on mount
   when: config_mount.stat.exists
-  ansible.builtin.shell: |
-    for f in /mnt/openclaw-config/*.json; do
-      [ -f "$f" ] && cp "$f" "{{ user_home }}/.openclaw/"
-    done
-  args:
-    executable: /bin/bash
-  changed_when: true
+  ansible.builtin.find:
+    paths: /mnt/openclaw-config
+    patterns: "*.json"
+    file_type: file
+  register: config_files_on_mount
 
-# Agent data persistence — symlink to writable mount
+- name: Copy config files from mount
+  when: config_mount.stat.exists and (config_files_on_mount.files | default([]) | length > 0)
+  ansible.builtin.copy:
+    src: "{{ item.path }}"
+    dest: "{{ user_home }}/.openclaw/{{ item.path | basename }}"
+    mode: "0640"
+    remote_src: true
+  loop: "{{ config_files_on_mount.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+
+# Agent data persistence: symlink to writable mount
 - name: Check if agent data mount exists
   ansible.builtin.stat:
     path: "{{ agent_data_mount | default('') }}"

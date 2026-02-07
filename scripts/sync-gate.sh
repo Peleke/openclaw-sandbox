@@ -160,7 +160,7 @@ validate_changes() {
     done < <(find "$STAGING_DIR" -type f -print0)
 
     if [[ "$binary_warnings" -gt 0 ]]; then
-        log_warn "${binary_warnings} binary/executable file(s) detected — review before applying."
+        log_warn "${binary_warnings} binary/executable file(s) detected. Review before applying."
     fi
 
     # 5. Extension allowlist (informational warnings only)

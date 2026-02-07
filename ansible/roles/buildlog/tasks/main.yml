@@ -12,7 +12,7 @@
   ansible.builtin.set_fact:
     user_home: "{{ user_home_result.stdout }}"
 
-# ~/.buildlog persistence — symlink to writable mount or create local dir
+# ~/.buildlog persistence: symlink to writable mount or create local dir
 - name: Check if buildlog data mount exists
   ansible.builtin.stat:
     path: "{{ buildlog_data_mount | default('') }}"
