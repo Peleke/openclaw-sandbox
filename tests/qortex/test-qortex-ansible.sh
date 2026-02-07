@@ -178,9 +178,9 @@ else
   log_fail "Tasks missing signals directory"
 fi
 
-# Test: buildlog dir guard
-if grep -q "Ensure buildlog directory exists" "$TASKS_FILE"; then
-  log_pass "Tasks guard buildlog directory existence"
+# Test: buildlog dir guard (check-before-create pattern to avoid chown on Lima symlinks)
+if grep -q "Check if buildlog directory exists" "$TASKS_FILE" && grep -q "Create buildlog directory for interop config" "$TASKS_FILE"; then
+  log_pass "Tasks guard buildlog directory existence (check-before-create)"
 else
   log_fail "Tasks missing buildlog directory guard"
 fi

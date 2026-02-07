@@ -115,6 +115,20 @@ else
   log_pass "No shell glob for config copy"
 fi
 
+# Test: Directory has owner/group set
+if grep -A6 "Ensure ~/.openclaw directory exists" "$TASKS_FILE" | grep -q "owner:"; then
+  log_pass "~/.openclaw directory sets owner"
+else
+  log_fail "~/.openclaw directory missing owner (files will be root-owned)"
+fi
+
+# Test: Copied config files have owner/group set
+if grep -A8 "Copy config files from mount" "$TASKS_FILE" | grep -q "owner:"; then
+  log_pass "Copied config files set owner (gateway can read them)"
+else
+  log_fail "Copied config files missing owner (gateway EACCES crash)"
+fi
+
 echo ""
 
 # ============================================================
