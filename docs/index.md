@@ -34,14 +34,19 @@ Changes only reach your host through a **validated sync gate** that runs gitleak
 
 | Feature | What it does |
 |---------|-------------|
+| [Python CLI](usage/bootstrap-flags.md) | `sandbox up`, `sandbox status`, `sandbox ssh` — profile-based management |
+| [Dual-Container Isolation](configuration/docker-sandbox.md) | Per-tool network routing: air-gapped by default, bridge only for tools that need it |
 | [Filesystem Isolation](architecture/overlay-filesystem.md) | OverlayFS makes host mounts read-only; all writes land in an overlay layer |
-| [Docker Sandbox](configuration/docker-sandbox.md) | Tool executions run in per-session Docker containers with bridge networking |
 | [Network Containment](configuration/network-policy.md) | UFW firewall allows only HTTPS, DNS, and Tailscale; everything else is denied and logged |
+| [MCP Server](configuration/docker-sandbox.md) | LLM agents manage the sandbox via FastMCP (`sandbox-mcp`) |
 | [Secrets Management](configuration/secrets.md) | Multiple injection methods, file permissions at `0600`, never exposed in logs |
+| [Config/Data Isolation](configuration/obsidian-vault.md) | Config files copied (patchable), agent data symlinked to persistent mounts |
 | [Gated Sync](usage/sync-gate.md) | gitleaks scan + path allowlist before any changes reach the host |
 | [GitHub CLI](configuration/github-cli.md) | `gh` installed in VM and sandbox containers with `GH_TOKEN` passthrough |
-| [Obsidian Vault](configuration/obsidian-vault.md) | Vault bind-mounted into containers as read-only |
+| [Obsidian Vault](configuration/obsidian-vault.md) | Vault bind-mounted with overlay protection; iCloud rsync sync |
+| [Qortex Interop](configuration/qortex.md) | Seed exchange directories and buildlog interop for multi-agent coordination |
 | [Telegram Integration](configuration/telegram.md) | Bot integration with pairing-based access control |
+| [Cadence Pipeline](configuration/cadence.md) | Ambient AI: vault watch → insight extraction → Telegram delivery |
 | [Tailscale Routing](configuration/network-policy.md) | Route to your private network via the host |
 
 ## Quick Start
@@ -51,11 +56,26 @@ Changes only reach your host through a **validated sync gate** that runs gitleak
 git clone https://github.com/Peleke/openclaw-sandbox.git
 cd openclaw-sandbox
 
-# Bootstrap with your OpenClaw repo and secrets
-./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.openclaw-secrets.env
+# Install the CLI
+pip install -e cli/
 
-# Access the VM
-limactl shell openclaw-sandbox
+# Create a profile interactively
+sandbox init
+
+# Provision the VM
+sandbox up
+
+# Check status
+sandbox status
+
+# SSH into the VM
+sandbox ssh
+```
+
+Or use `bootstrap.sh` directly:
+
+```bash
+./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.openclaw-secrets.env
 ```
 
 !!! tip
@@ -85,10 +105,11 @@ Two layers of isolation work together:
 
 ```
 Layer 1 (overlay):   gateway process  --> VM + read-only host mounts + OverlayFS
-Layer 2 (docker):    tool execution   --> Docker container (bridge network)
+Layer 2 (docker):    tool execution   --> Isolated container (air-gapped)
+                     network tools    --> Network container (bridge, per-tool routing)
 ```
 
-Host mounts are **read-only by default**. All writes land in an OverlayFS upper layer inside the VM. Individual tool executions (file reads/writes, shell commands, browser actions) are further sandboxed inside Docker containers with configurable networking (`bridge` or `none`).
+Host mounts are **read-only by default**. All writes land in an OverlayFS upper layer inside the VM. Individual tool executions are further sandboxed inside Docker containers with **dual-container network isolation**: most tools run air-gapped, while only `web_fetch`, `web_search`, and `gh` commands get bridge networking.
 
 ## Security at a Glance
 

@@ -134,6 +134,7 @@ The bottom of `CHANGELOG.md` contains comparison links for each version. The rel
 
 | Version | Date | Milestone |
 |---------|------|-----------|
+| *Unreleased* | -- | PRs #36–#70: GitHub CLI, dual-container isolation, Python CLI, MCP server, config/data isolation, qortex interop, cadence wiring |
 | 0.3.0 | 2026-02-03 | S1-S7: Bootstrap through Cadence |
 | 0.2.0 | 2026-02-02 | S4-S6: Tailscale, Secrets, Telegram |
 | 0.1.0 | 2026-02-01 | S1: Initial bootstrap infrastructure |

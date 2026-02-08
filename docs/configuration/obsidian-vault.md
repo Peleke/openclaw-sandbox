@@ -1,12 +1,16 @@
 # Obsidian Vault Access
 
-The sandbox can mount an Obsidian vault from your host, giving agents read-only access to your notes and knowledge base. The vault is available both in the VM and inside sandbox containers.
+The sandbox can mount an Obsidian vault from your host, giving agents access to your notes and knowledge base. The vault is available both in the VM and inside sandbox containers, with writes landing in an OverlayFS upper layer (not on your host).
 
 ## Setup
 
 Pass the `--vault` flag when bootstrapping:
 
 ```bash
+# Using the Python CLI (recommended) — configure vault path during `sandbox init`
+sandbox up
+
+# Using bootstrap.sh directly
 ./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
 ```
 
@@ -45,7 +49,7 @@ This tells agents where to find vault files without hardcoding the path.
 
 ### Container Bind Mount
 
-The sandbox role automatically adds a read-only bind mount into Docker containers:
+The sandbox role automatically adds a **read-write** bind mount into Docker containers (changed from `ro` in PR #67):
 
 ```json
 {
@@ -53,7 +57,7 @@ The sandbox role automatically adds a read-only bind mount into Docker container
     "defaults": {
       "sandbox": {
         "docker": {
-          "binds": ["/workspace-obsidian:/workspace-obsidian:ro"]
+          "binds": ["/workspace-obsidian:/workspace-obsidian:rw"]
         }
       }
     }
@@ -62,7 +66,7 @@ The sandbox role automatically adds a read-only bind mount into Docker container
 ```
 
 !!! note "Overlay-protected writes"
-    The vault is mounted as `rw` (read-write) in containers. Writes land in the overlay upper layer, not directly on the host vault. The sync gate controls when changes propagate back. To lock the vault to read-only, override with:
+    Even though the container mount is `rw`, writes land in the OverlayFS upper layer, not directly on the host vault. The sync gate controls when changes propagate back. To lock the vault to read-only, override with:
     ```bash
     -e "sandbox_vault_access=ro"
     ```
@@ -109,6 +113,35 @@ limactl shell openclaw-sandbox -- docker run --rm \
 limactl shell openclaw-sandbox -- jq '.agents.defaults.sandbox.docker.binds' ~/.openclaw/openclaw.json
 # Expected: ["/workspace-obsidian:/workspace-obsidian:ro"]
 ```
+
+## iCloud Vault Sync
+
+If your Obsidian vault lives in iCloud (`~/Library/Mobile Documents/iCloud~md~obsidian/...`), virtiofs cannot directly read files that iCloud has evicted to the cloud. The `sync-vault.sh` script uses rsync to bridge this gap:
+
+```bash
+# Manual sync from host
+./scripts/sync-vault.sh
+```
+
+The script:
+
+1. Runs rsync from the host vault to the VM's `/workspace-obsidian/` (the merged overlay mount)
+2. Uses `--exclude=.obsidian/` to avoid ESTALE errors on virtiofs lower-layer config files
+3. Can be automated via launchd (see [Cadence > Host-Side Scheduling](cadence.md#host-side-scheduling-launchd))
+
+!!! tip "Write to the merged mount"
+    The sync script writes to `/workspace-obsidian/` (the merged overlay mount), **not** to the raw upper dir at `/var/lib/openclaw/overlay/obsidian/upper/`. This is critical: writing to the upper dir directly bypasses inotify on the merged mount, so chokidar (used by cadence) would never see those writes.
+
+## The inotify Gotcha
+
+OverlayFS has an important subtlety: **inotify watches on the merged mount only fire for writes to the merged mount**. If a process writes directly to the overlay upper directory, the change is visible via `ls` on the merged mount, but inotify never fires.
+
+This means:
+
+- Cadence file watchers on `/workspace-obsidian/` work correctly for writes to `/workspace-obsidian/`
+- Cadence file watchers on `/workspace-obsidian/` do **not** fire for writes to `/var/lib/openclaw/overlay/obsidian/upper/`
+
+Always write to `/workspace-obsidian/` (the merged mount), not the raw upper dir.
 
 ## Troubleshooting
 

@@ -30,6 +30,10 @@ Cadence requires:
 ### 1. Bootstrap with vault
 
 ```bash
+# Using the Python CLI (recommended) — configure vault path during `sandbox init`
+sandbox up
+
+# Using bootstrap.sh directly
 ./bootstrap.sh --openclaw ~/Projects/openclaw \
   --vault ~/Documents/Vaults/main \
   --secrets ~/.openclaw-secrets.env
@@ -53,10 +57,11 @@ limactl shell openclaw-sandbox -- nano ~/.openclaw/cadence.json
 ```json
 {
   "enabled": true,
-  "vaultPath": "/mnt/obsidian",
+  "vaultPath": "/workspace-obsidian",
   "delivery": {
     "channel": "telegram",
-    "telegramChatId": "YOUR_CHAT_ID"
+    "telegramChatId": "YOUR_CHAT_ID",
+    "fileLogPath": "~/.openclaw/cadence/signals.jsonl"
   },
   "pillars": [
     { "id": "tech", "name": "Technology", "keywords": ["code", "software", "ai", "engineering"] },
@@ -100,9 +105,10 @@ limactl shell openclaw-sandbox -- sudo systemctl restart openclaw-cadence
 | Field | Default | Description |
 |-------|---------|-------------|
 | `enabled` | `false` | Master switch for the pipeline |
-| `vaultPath` | `/mnt/obsidian` | Path to Obsidian vault inside VM |
+| `vaultPath` | `/workspace-obsidian` | Path to Obsidian vault inside VM (merged overlay mount) |
 | `delivery.channel` | `telegram` | Delivery channel: `telegram`, `discord`, `log` |
 | `delivery.telegramChatId` | `""` | Telegram chat ID for delivery |
+| `delivery.fileLogPath` | `~/.openclaw/cadence/signals.jsonl` | JSONL log for container signal bridging |
 | `pillars` | 3 default pillars | Content categories for insight classification |
 | `llm.provider` | `anthropic` | LLM provider for extraction |
 | `llm.model` | `claude-3-5-haiku-latest` | LLM model |
@@ -129,6 +135,81 @@ Today I learned about OverlayFS and how it handles whiteout files...
 ```
 
 Only entries with the `::publish` tag are processed by the extraction pipeline. Other entries are ignored.
+
+## Vault Sync and the inotify Gotcha
+
+Cadence watches the vault at `/workspace-obsidian` using chokidar (inotify under the hood). This is the **merged overlay mount** — not the raw upper directory.
+
+!!! warning "Always write to the merged mount"
+    Writing directly to the overlay upper dir (`/var/lib/openclaw/overlay/obsidian/upper/`) bypasses inotify on the merged mount. Cadence will never see those writes. Always write to `/workspace-obsidian/` so that file watchers detect the changes.
+
+### Host-Side Vault Sync
+
+If your Obsidian vault is synced via iCloud, virtiofs cannot read iCloud-locked files directly. The `sync-vault.sh` script uses rsync to copy vault contents to the VM:
+
+```bash
+# Manual sync
+./scripts/sync-vault.sh
+
+# Automated via launchd (see below)
+```
+
+The rsync uses `--exclude=.obsidian/` to avoid ESTALE errors on virtiofs lower-layer config files that iCloud may lock.
+
+## Signal Bridging via fileLogPath
+
+The `delivery.fileLogPath` field in cadence.json enables JSONL-based signal bridging. When set, cadence writes every signal event to this file in addition to the primary delivery channel:
+
+```json
+{
+  "delivery": {
+    "channel": "telegram",
+    "fileLogPath": "~/.openclaw/cadence/signals.jsonl"
+  }
+}
+```
+
+This allows other processes (e.g., sandbox containers, buildlog, qortex) to read the signal log and react to cadence events without needing direct Telegram access.
+
+## Custom Skills Mount
+
+The `--skills` flag mounts a custom skills directory into the VM at `/mnt/skills-custom` (read-only):
+
+```bash
+# Using bootstrap.sh
+./bootstrap.sh --openclaw ~/Projects/openclaw \
+  --vault ~/Documents/Vaults/main \
+  --skills ~/Projects/skills/skills/custom
+
+# The skills directory is available at /mnt/skills-custom inside the VM
+```
+
+Cadence can load custom skill definitions from this mount for use in the signal bus pipeline.
+
+## Host-Side Scheduling (launchd)
+
+Two launchd plist files in `scripts/` provide host-side scheduling for macOS:
+
+### Vault Sync (every 5 minutes)
+
+`scripts/com.openclaw.vault-sync.plist` — runs `sync-vault.sh` on a timer to keep the VM vault current with host-side iCloud changes.
+
+### Cadence Host Process
+
+`scripts/com.openclaw.cadence.plist` — runs the cadence host-side coordinator.
+
+To install the plists:
+
+```bash
+cp scripts/com.openclaw.vault-sync.plist ~/Library/LaunchAgents/
+cp scripts/com.openclaw.cadence.plist ~/Library/LaunchAgents/
+
+launchctl load ~/Library/LaunchAgents/com.openclaw.vault-sync.plist
+launchctl load ~/Library/LaunchAgents/com.openclaw.cadence.plist
+```
+
+!!! warning "Full Disk Access required"
+    launchd agents cannot access `~/Documents/` without Full Disk Access (FDA) for `/bin/bash`. Grant FDA to `/bin/bash` in **System Settings > Privacy & Security > Full Disk Access**. Manual `sync-vault.sh` runs work fine because your terminal already has FDA.
 
 ## Ansible Variables
 

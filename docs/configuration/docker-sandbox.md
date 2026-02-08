@@ -7,15 +7,21 @@ OpenClaw's built-in sandbox containerizes individual tool executions (file reads
 ## How It Works
 
 ```
-Agent request --> Gateway process (VM) --> Tool execution --> Docker container
-                                                              |
-                                                              +-- /workspace bind mount (rw)
-                                                              +-- /workspace-obsidian bind mount (ro)
-                                                              +-- GH_TOKEN env var (if configured)
-                                                              +-- bridge network (internet access)
+Agent request --> Gateway process (VM) --> Tool routing
+                                              |
+                  +---------------------------+---------------------------+
+                  |                                                       |
+          Isolated Container                                    Network Container
+          (network: none)                                       (network: bridge)
+                  |                                                       |
+                  +-- /workspace bind mount (rw)                          +-- /workspace bind mount (rw)
+                  +-- /workspace-obsidian bind mount (rw)                 +-- /workspace-obsidian bind mount (rw)
+                  +-- air-gapped (no internet)                            +-- GH_TOKEN env var
+                                                                          +-- BRAVE_API_KEY env var
+                                                                          +-- bridge network (internet access)
 ```
 
-The gateway spawns a Docker container for each tool execution. The container gets bind mounts to the workspace and (optionally) the Obsidian vault, plus any environment variables configured for passthrough.
+The gateway spawns Docker containers for tool execution. By default, the sandbox uses **dual-container network isolation**: an air-gapped container for most operations and a bridge-networked container for tools that need internet access. The `networkAllow` and `networkExecAllow` config controls which tools and commands are routed to the network container.
 
 ## Default Configuration
 
@@ -24,18 +30,128 @@ The gateway spawns a Docker container for each tool execution. The container get
 | **Mode** | `all` | Every session is sandboxed |
 | **Scope** | `session` | One container per session (not per tool call) |
 | **Workspace access** | `rw` | Tools can read and write project files |
-| **Network** | `bridge` | Containers can reach the internet |
+| **Primary network** | `none` | Isolated container is air-gapped by default |
+| **Network container** | `bridge` | Network-routed tools get internet access |
 | **Image** | `openclaw-sandbox:bookworm-slim` | Debian-based with `gh` CLI |
+| **networkAllow** | `[web_fetch, web_search]` | Tools routed to network container |
+| **networkExecAllow** | `[gh]` | Command prefixes routed to network container |
 
 These defaults are set in `ansible/roles/sandbox/defaults/main.yml` and injected into `~/.openclaw/openclaw.json` during provisioning.
 
-## Network Modes
+## Per-Tool Network Isolation (Dual-Container)
 
-### Bridge (default)
+The default sandbox configuration uses **dual-container network isolation**. Instead of giving every tool execution internet access (or denying it to all of them), the gateway routes each tool to one of two containers based on what it needs:
+
+| Container | Network Mode | Purpose |
+|-----------|-------------|---------|
+| **Isolated** | `none` | Most tool executions (file reads/writes, shell commands) — air-gapped |
+| **Network** | `bridge` | Tools that need internet (`web_fetch`, `web_search`, `gh`) |
+
+### How Routing Works
+
+The gateway checks two config lists to decide where a tool runs:
+
+1. **`networkAllow`** — tool names routed to the network container. Default: `["web_fetch", "web_search"]`
+2. **`networkExecAllow`** — command prefixes for shell execution routed to the network container. Default: `["gh"]`
+
+If a tool matches either list, it runs in the bridge-networked container. Everything else runs in the isolated (air-gapped) container.
+
+### Example: What Happens When the Agent Runs `gh pr create`
+
+1. Agent calls the `execute` tool with command `gh pr create --title "Fix bug"`
+2. Gateway sees the command prefix `gh` matches `networkExecAllow`
+3. Execution is routed to the **network container** (bridge mode, has `GH_TOKEN`)
+4. GitHub API call succeeds because the container has internet access
+
+### Example: What Happens When the Agent Reads a File
+
+1. Agent calls the `read` tool for `src/main.py`
+2. Gateway checks `networkAllow` — `read` is not listed
+3. Execution is routed to the **isolated container** (no network)
+4. File is read from `/workspace` bind mount — no internet needed
+
+### Configuration in openclaw.json
+
+The dual-container config is injected into `~/.openclaw/openclaw.json` during provisioning:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "sandbox": {
+        "mode": "all",
+        "scope": "session",
+        "workspaceAccess": "rw",
+        "docker": {
+          "network": "none",
+          "env": {
+            "GH_TOKEN": "${GH_TOKEN}",
+            "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+          }
+        },
+        "networkAllow": ["web_fetch", "web_search"],
+        "networkExecAllow": ["gh"],
+        "networkDocker": {
+          "network": "bridge"
+        }
+      }
+    }
+  }
+}
+```
+
+Key fields:
+
+- `docker.network: "none"` — the **primary (isolated) container** has no network
+- `networkAllow` — tool names routed to the network container
+- `networkExecAllow` — command prefixes routed to the network container
+- `networkDocker.network: "bridge"` — the **network container** has bridge networking
+
+### Operator Extension Variables
+
+Operators can add extra tools or command prefixes to the network-routed lists without overriding the defaults:
 
 ```bash
-./bootstrap.sh --openclaw ~/Projects/openclaw
-# sandbox_docker_network defaults to "bridge"
+sandbox up  # after setting extra_vars in your profile, or:
+./bootstrap.sh --openclaw ~/Projects/openclaw \
+  -e '{"sandbox_network_allow_extra": ["mcp_fetch"]}' \
+  -e '{"sandbox_network_exec_allow_extra": ["curl", "npm"]}'
+```
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `sandbox_network_allow_extra` | `[]` | Additional tool names for network routing |
+| `sandbox_network_exec_allow_extra` | `[]` | Additional command prefixes for network routing |
+
+These are merged with the base lists at provisioning time.
+
+### Disabling Dual-Container Mode
+
+To give all tools network access (single bridge container):
+
+```bash
+sandbox up  # with extra_vars: sandbox_docker_network=bridge
+# or
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "sandbox_docker_network=bridge"
+```
+
+To deny all tools network access (single air-gapped container, clear the routing lists):
+
+```bash
+./bootstrap.sh --openclaw ~/Projects/openclaw \
+  -e '{"sandbox_network_allow": [], "sandbox_network_exec_allow": []}'
+```
+
+## Legacy Network Modes
+
+For simpler configurations without per-tool routing, you can set a single network mode for all tools.
+
+### Bridge
+
+```bash
+sandbox up  # with extra_vars: sandbox_docker_network=bridge
+# or
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "sandbox_docker_network=bridge"
 ```
 
 Standard Docker networking. Containers get their own network namespace with NAT to the host. They can reach the internet (subject to the VM's UFW rules) for tasks like `npm install`, `curl`, or `gh api` calls.
@@ -43,13 +159,15 @@ Standard Docker networking. Containers get their own network namespace with NAT 
 ### None (maximum isolation)
 
 ```bash
+sandbox up  # with extra_vars: sandbox_docker_network=none
+# or
 ./bootstrap.sh --openclaw ~/Projects/openclaw -e "sandbox_docker_network=none"
 ```
 
 No network at all. Containers cannot make any network requests. Use this when you want tool executions to be completely offline -- the agent can still make LLM API calls from the gateway process, but tool executions in the container are air-gapped.
 
 !!! tip "Choosing a network mode"
-    Use `bridge` if your agent needs to run `npm install`, `gh pr create`, `curl`, or any command that requires internet access. Use `none` if you want maximum isolation and your agent only needs file operations and shell commands.
+    The default dual-container setup is recommended: most tools run air-gapped while `web_fetch`, `web_search`, and `gh` get internet access. Override to single-mode `bridge` only if your agent needs broad internet access (e.g., `npm install`, `curl`).
 
 ## Image: `openclaw-sandbox:bookworm-slim`
 
@@ -105,20 +223,17 @@ USER <original-user>
 
 ## Sandbox Docker Environment Passthrough
 
-The sandbox role configures environment variable passthrough in `openclaw.json`. Currently, `GH_TOKEN` is the only variable passed through:
+The sandbox role configures environment variable passthrough in `openclaw.json`. Variables are passed to the network container (which has bridge networking) so they can be used by tools that need API access:
 
 ```json
 {
   "agents": {
     "defaults": {
       "sandbox": {
-        "mode": "all",
-        "scope": "session",
-        "workspaceAccess": "rw",
         "docker": {
-          "network": "bridge",
           "env": {
-            "GH_TOKEN": "${GH_TOKEN}"
+            "GH_TOKEN": "${GH_TOKEN}",
+            "BRAVE_API_KEY": "${BRAVE_API_KEY}"
           }
         }
       }
@@ -129,9 +244,14 @@ The sandbox role configures environment variable passthrough in `openclaw.json`.
 
 The `${GH_TOKEN}` syntax means "take the value of `GH_TOKEN` from the gateway's environment and pass it into the container." Since the gateway loads secrets via `EnvironmentFile=/etc/openclaw/secrets.env`, the token flows through without being hardcoded anywhere.
 
+Currently two variables are passed through:
+
+- **`GH_TOKEN`** — for GitHub CLI operations (`gh pr create`, `gh api`, etc.)
+- **`BRAVE_API_KEY`** — for `web_search` tool via the Brave Search API
+
 ## Vault Bind Mount
 
-When an Obsidian vault is mounted via `--vault`, the overlay at `/workspace-obsidian` is bind-mounted into sandbox containers as **read-only**:
+When an Obsidian vault is mounted via `--vault`, the overlay at `/workspace-obsidian` is bind-mounted into sandbox containers as **read-write** by default:
 
 ```json
 {
@@ -139,7 +259,7 @@ When an Obsidian vault is mounted via `--vault`, the overlay at `/workspace-obsi
     "defaults": {
       "sandbox": {
         "docker": {
-          "binds": ["/workspace-obsidian:/workspace-obsidian:ro"]
+          "binds": ["/workspace-obsidian:/workspace-obsidian:rw"]
         }
       }
     }
@@ -147,7 +267,7 @@ When an Obsidian vault is mounted via `--vault`, the overlay at `/workspace-obsi
 }
 ```
 
-This gives agents inside sandbox containers access to vault files for context, without being able to modify them.
+Writes inside the container land in the OverlayFS upper layer, not directly on the host vault. The sync gate controls when changes propagate back. To lock the vault to read-only, override with `-e "sandbox_vault_access=ro"`.
 
 The bind mount is only added if `/workspace-obsidian` exists on the VM. If you re-provision without `--vault`, the bind mount entry remains in `openclaw.json` but Docker will fail gracefully if the source path doesn't exist.
 
@@ -156,6 +276,10 @@ The bind mount is only added if `/workspace-obsidian` exists on the VM. If you r
 To run a lighter VM without Docker:
 
 ```bash
+# Using the Python CLI (recommended)
+sandbox up  # after running: sandbox init (and selecting --no-docker in profile)
+
+# Using bootstrap.sh directly
 ./bootstrap.sh --openclaw ~/Projects/openclaw --no-docker
 ```
 
@@ -171,7 +295,12 @@ This sets `docker_enabled=false`, which skips both the Docker CE installation an
 | `sandbox_workspace_access` | `rw` | `none`, `ro`, `rw` |
 | `sandbox_image` | `openclaw-sandbox:bookworm-slim` | Docker image name |
 | `sandbox_build_browser` | `false` | Also build the browser sandbox image |
-| `sandbox_docker_network` | `bridge` | `bridge`, `host`, `none` |
+| `sandbox_docker_network` | `none` | Primary container: `bridge`, `host`, `none` |
+| `sandbox_network_allow` | `[web_fetch, web_search]` | Tools routed to network container |
+| `sandbox_network_allow_extra` | `[]` | Operator-provided extra tools for network routing |
+| `sandbox_network_exec_allow` | `[gh]` | Command prefixes routed to network container |
+| `sandbox_network_exec_allow_extra` | `[]` | Operator-provided extra command prefixes |
+| `sandbox_network_docker_network` | `bridge` | Network container mode: `bridge`, `host` |
 | `sandbox_setup_script` | `scripts/sandbox-setup.sh` | Build script relative to workspace |
 | `sandbox_vault_path` | `/workspace-obsidian` | Vault bind mount source |
 | `sandbox_vault_access` | `rw` | Vault access in container: `ro`, `rw` |
