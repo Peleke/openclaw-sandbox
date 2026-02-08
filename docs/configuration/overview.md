@@ -68,7 +68,7 @@ Configuration flows through three layers:
 | `sandbox_docker_network` | `bridge` | `openclaw.json` | Network: `bridge`, `host`, `none` | `-e` |
 | `sandbox_setup_script` | `scripts/sandbox-setup.sh` | -- | Build script location | `-e` |
 | `sandbox_vault_path` | `/workspace-obsidian` | `openclaw.json` | Vault bind mount source | `-e` |
-| `sandbox_vault_access` | `ro` | `openclaw.json` | Vault access: `ro`, `rw` | `-e` |
+| `sandbox_vault_access` | `rw` | `openclaw.json` | Vault access: `ro`, `rw` | `-e` |
 
 ### Docker Role (`ansible/roles/docker/defaults/main.yml`)
 

@@ -125,10 +125,10 @@ else
   log_fail "Missing default: sandbox_vault_access"
 fi
 
-if grep -q '"ro"' "$SANDBOX_DEFAULTS"; then
-  log_pass "sandbox_vault_access defaults to ro (read-only)"
+if grep -q '"rw"' "$SANDBOX_DEFAULTS"; then
+  log_pass "sandbox_vault_access defaults to rw (read-write, overlay-protected)"
 else
-  log_fail "sandbox_vault_access should default to ro"
+  log_fail "sandbox_vault_access should default to rw"
 fi
 
 echo ""

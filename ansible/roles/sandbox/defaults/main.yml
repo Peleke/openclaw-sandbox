@@ -55,4 +55,4 @@ sandbox_setup_script: "scripts/sandbox-setup.sh"
 
 # Obsidian vault bind mount for sandbox containers
 sandbox_vault_path: "/workspace-obsidian"
-sandbox_vault_access: "ro"
+sandbox_vault_access: "rw"

@@ -37,7 +37,7 @@ Individual tool executions -- file reads, shell commands, browser actions -- are
 
 **Workspace bind mount.** The container gets `/workspace` bind-mounted read-write, which is the overlay merged view (not the host mount). Writes from inside the container go to the overlay upper layer.
 
-**Read-only vault access.** If an Obsidian vault is mounted, it is bind-mounted into containers as read-only (`/workspace-obsidian:/workspace-obsidian:ro`).
+**Overlay-protected vault access.** If an Obsidian vault is mounted, it is bind-mounted into containers as read-write (`/workspace-obsidian:/workspace-obsidian:rw`). Writes land in the overlay upper layer, not on the host vault directly. The sync gate controls when changes propagate back.
 
 ## The Gated Exit Path
 

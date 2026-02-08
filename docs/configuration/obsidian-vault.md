@@ -61,10 +61,10 @@ The sandbox role automatically adds a read-only bind mount into Docker container
 }
 ```
 
-!!! note "Read-only by default"
-    The vault is mounted as `ro` (read-only) in containers. This is controlled by the `sandbox_vault_access` variable, which defaults to `ro`. Change it with:
+!!! note "Overlay-protected writes"
+    The vault is mounted as `rw` (read-write) in containers. Writes land in the overlay upper layer, not directly on the host vault. The sync gate controls when changes propagate back. To lock the vault to read-only, override with:
     ```bash
-    -e "sandbox_vault_access=rw"
+    -e "sandbox_vault_access=ro"
     ```
 
 ## Stale Mount Cleanup
@@ -84,7 +84,7 @@ This prevents systemd failures from mount units pointing to nonexistent lower di
 | `overlay_lower_obsidian` | `/mnt/obsidian` | Host vault mount point |
 | `overlay_obsidian_path` | `/workspace-obsidian` | Merged overlay mount point |
 | `sandbox_vault_path` | `/workspace-obsidian` | Source path for container bind mount |
-| `sandbox_vault_access` | `ro` | Container access: `ro` or `rw` |
+| `sandbox_vault_access` | `rw` | Container access: `ro` or `rw` |
 
 ## Verification Commands
 
