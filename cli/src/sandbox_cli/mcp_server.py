@@ -12,6 +12,7 @@ import shutil
 import subprocess
 
 from ._capture import CapturedExec, _truncate, make_capture_console, suppress_stdout
+from .dashboard import run_dashboard_sync
 from .lima_manager import LimaError, LimaManager
 from .models import SandboxProfile
 from .profile import load_profile
@@ -303,6 +304,31 @@ def sandbox_agent_identity() -> dict:
     return {"found": False, "name": "", "emoji": ""}
 
 
+def sandbox_dashboard_sync(dry_run: bool = False) -> dict:
+    """Sync GitHub issues to Obsidian kanban boards.
+
+    Runs gh-obsidian-sync.py using the dashboard config from the sandbox
+    profile. Generates Master Kanban, per-repo boards, individual issue
+    notes, and a Dataview dashboard.
+
+    Set dry_run=True to preview without writing files.
+    """
+    profile = _load_profile_safe()
+
+    try:
+        result = run_dashboard_sync(profile, dry_run=dry_run)
+    except FileNotFoundError as exc:
+        return {"error": str(exc), "exit_code": -1}
+    except subprocess.TimeoutExpired:
+        return {"error": "Dashboard sync timed out.", "exit_code": -1}
+
+    return {
+        "stdout": _truncate(result.stdout),
+        "stderr": _truncate(result.stderr),
+        "exit_code": result.returncode,
+    }
+
+
 # ── MCP registration ────────────────────────────────────────────────────
 
 def _build_server() -> None:
@@ -320,6 +346,7 @@ def _build_server() -> None:
     mcp.tool(sandbox_ssh_info)
     mcp.tool(sandbox_gateway_info)
     mcp.tool(sandbox_agent_identity)
+    mcp.tool(sandbox_dashboard_sync)
 
 
 mcp = None  # type: ignore[assignment]
