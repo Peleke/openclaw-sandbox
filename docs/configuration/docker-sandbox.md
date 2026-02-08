@@ -174,7 +174,7 @@ This sets `docker_enabled=false`, which skips both the Docker CE installation an
 | `sandbox_docker_network` | `bridge` | `bridge`, `host`, `none` |
 | `sandbox_setup_script` | `scripts/sandbox-setup.sh` | Build script relative to workspace |
 | `sandbox_vault_path` | `/workspace-obsidian` | Vault bind mount source |
-| `sandbox_vault_access` | `ro` | Vault access in container: `ro`, `rw` |
+| `sandbox_vault_access` | `rw` | Vault access in container: `ro`, `rw` |
 
 Override any of these with `-e`:
 

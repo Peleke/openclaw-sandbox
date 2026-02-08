@@ -74,7 +74,7 @@ OpenClaw's built-in sandbox containerizes tool executions inside the VM. Every s
 `gh` installed from the official APT repository. `GH_TOKEN` passthrough from secrets — no `gh auth login` needed. Available both in the VM and inside sandbox containers.
 
 ### 📓 Obsidian Vault Access
-Mount your vault read-only into the VM and sandbox containers. The agent can read your notes but can't modify them. `OBSIDIAN_VAULT_PATH` is exported so agents know where to find vault files.
+Mount your vault into the VM at `/workspace-obsidian` via OverlayFS. Writes from sandbox containers land in the overlay upper layer, not on the host vault directly — the sync gate controls when changes propagate back. `OBSIDIAN_VAULT_PATH` is exported so agents know where to find vault files.
 
 ### 📡 Telegram Integration
 Pairing-based access control. Pre-seed your Telegram user ID or use the built-in pairing flow. No open access by default.
