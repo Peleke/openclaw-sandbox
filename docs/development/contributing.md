@@ -1,6 +1,6 @@
 # Contributing
 
-Contributions to OpenClaw Sandbox are welcome. This guide covers the development workflow from fork to merged PR.
+Contributions to Bilrost are welcome. This guide covers the development workflow from fork to merged PR.
 
 ## Development Setup
 

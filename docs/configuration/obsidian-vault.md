@@ -7,8 +7,8 @@ The sandbox can mount an Obsidian vault from your host, giving agents access to 
 Pass the `--vault` flag when bootstrapping:
 
 ```bash
-# Using the Python CLI (recommended) — configure vault path during `sandbox init`
-sandbox up
+# Using the Bilrost CLI (recommended) — configure vault path during `bilrost init`
+bilrost up
 
 # Using bootstrap.sh directly
 ./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main

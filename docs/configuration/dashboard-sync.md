@@ -58,18 +58,18 @@ script_path = ""
 
 ```bash
 # Run the sync
-sandbox dashboard sync
+bilrost dashboard sync
 
 # Preview without writing files
-sandbox dashboard sync --dry-run
+bilrost dashboard sync --dry-run
 ```
 
-The `sandbox dashboard` command (without `sync`) still opens the gateway dashboard in your browser, same as before. Use `--page` to jump to a specific page:
+The `bilrost dashboard` command (without `sync`) still opens the gateway dashboard in your browser, same as before. Use `--page` to jump to a specific page:
 
 ```bash
-sandbox dashboard              # open gateway dashboard
-sandbox dashboard --page green # open Green dashboard
-sandbox dashboard sync         # run GitHub-to-Obsidian sync
+bilrost dashboard              # open gateway dashboard
+bilrost dashboard --page green # open Green dashboard
+bilrost dashboard sync         # run GitHub-to-Obsidian sync
 ```
 
 ### MCP Tool

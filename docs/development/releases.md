@@ -1,6 +1,6 @@
 # Releases
 
-OpenClaw Sandbox uses [semantic versioning](https://semver.org/) with milestone-based releases.
+Bilrost uses [semantic versioning](https://semver.org/) with milestone-based releases.
 
 ## Versioning Policy
 

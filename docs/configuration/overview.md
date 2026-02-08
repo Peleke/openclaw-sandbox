@@ -1,6 +1,6 @@
 # Configuration Overview
 
-Every configurable aspect of the OpenClaw Sandbox maps to an Ansible variable, a file on the VM, and a way to change it. This page is the single source of truth for what you can configure and how.
+Every configurable aspect of the Bilrost maps to an Ansible variable, a file on the VM, and a way to change it. This page is the single source of truth for what you can configure and how.
 
 ![Architecture](../diagrams/architecture.svg)
 

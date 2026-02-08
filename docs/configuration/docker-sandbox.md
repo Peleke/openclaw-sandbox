@@ -112,7 +112,7 @@ Key fields:
 Operators can add extra tools or command prefixes to the network-routed lists without overriding the defaults:
 
 ```bash
-sandbox up  # after setting extra_vars in your profile, or:
+bilrost up  # after setting extra_vars in your profile, or:
 ./bootstrap.sh --openclaw ~/Projects/openclaw \
   -e '{"sandbox_network_allow_extra": ["mcp_fetch"]}' \
   -e '{"sandbox_network_exec_allow_extra": ["curl", "npm"]}'
@@ -130,7 +130,7 @@ These are merged with the base lists at provisioning time.
 To give all tools network access (single bridge container):
 
 ```bash
-sandbox up  # with extra_vars: sandbox_docker_network=bridge
+bilrost up  # with extra_vars: sandbox_docker_network=bridge
 # or
 ./bootstrap.sh --openclaw ~/Projects/openclaw -e "sandbox_docker_network=bridge"
 ```
@@ -149,7 +149,7 @@ For simpler configurations without per-tool routing, you can set a single networ
 ### Bridge
 
 ```bash
-sandbox up  # with extra_vars: sandbox_docker_network=bridge
+bilrost up  # with extra_vars: sandbox_docker_network=bridge
 # or
 ./bootstrap.sh --openclaw ~/Projects/openclaw -e "sandbox_docker_network=bridge"
 ```
@@ -159,7 +159,7 @@ Standard Docker networking. Containers get their own network namespace with NAT 
 ### None (maximum isolation)
 
 ```bash
-sandbox up  # with extra_vars: sandbox_docker_network=none
+bilrost up  # with extra_vars: sandbox_docker_network=none
 # or
 ./bootstrap.sh --openclaw ~/Projects/openclaw -e "sandbox_docker_network=none"
 ```
@@ -277,7 +277,7 @@ To run a lighter VM without Docker:
 
 ```bash
 # Using the Python CLI (recommended)
-sandbox up  # after running: sandbox init (and selecting --no-docker in profile)
+bilrost up  # after running: bilrost init (and selecting --no-docker in profile)
 
 # Using bootstrap.sh directly
 ./bootstrap.sh --openclaw ~/Projects/openclaw --no-docker

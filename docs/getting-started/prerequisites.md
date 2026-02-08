@@ -1,12 +1,12 @@
 # Prerequisites
 
-Before you install OpenClaw Sandbox, make sure your machine meets a few basic requirements. The bootstrap script handles most of the heavy lifting, but it needs a couple of things to already be in place.
+Before you install Bilrost, make sure your machine meets a few basic requirements. The bootstrap script handles most of the heavy lifting, but it needs a couple of things to already be in place.
 
 ## System Requirements
 
 ### macOS
 
-OpenClaw Sandbox runs on **macOS only** -- it uses [Lima](https://lima-vm.io/) to manage a Linux VM via Apple's Virtualization framework. Both Apple Silicon (M1/M2/M3/M4) and Intel Macs are supported.
+Bilrost runs on **macOS only** -- it uses [Lima](https://lima-vm.io/) to manage a Linux VM via Apple's Virtualization framework. Both Apple Silicon (M1/M2/M3/M4) and Intel Macs are supported.
 
 !!! note
     On Apple Silicon, the VM uses Rosetta for x86_64 emulation automatically. You do not need to configure this yourself.

@@ -1,6 +1,6 @@
 # Threat Model
 
-Yes, we know OpenClaw Sandbox is not enterprise-secure. It is a hobby project that runs AI agents inside a Lima VM. People love to point this out, as if we hadn't noticed.
+Yes, we know Bilrost is not enterprise-secure. It is a hobby project that runs AI agents inside a Lima VM. People love to point this out, as if we hadn't noticed.
 
 The reason we do threat modeling is not to posture about our "security posture." It is because we would rather think systematically about what could go wrong *before* we start bolting on security controls at random. A dumpster fire is still a dumpster fire, but at least we can map out where the flames are hottest.
 

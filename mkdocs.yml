@@ -1,5 +1,5 @@
-site_name: OpenClaw Sandbox
-site_description: Secure, isolated VM environment for running OpenClaw agents
+site_name: Bilrost
+site_description: Secure, isolated VM environment for running AI agents
 site_url: https://peleke.github.io/openclaw-sandbox/
 repo_url: https://github.com/Peleke/openclaw-sandbox
 repo_name: Peleke/openclaw-sandbox

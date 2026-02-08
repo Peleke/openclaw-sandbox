@@ -1,6 +1,6 @@
 # Supply Chain
 
-The OpenClaw Sandbox pulls code and binaries from npm, apt, Homebrew, NodeSource, the Bun installer, Docker Hub, and Ubuntu cloud images. Every one of these is a trust decision we're making implicitly. A compromised dependency runs with full privileges before any of our sandbox controls are active.
+The Bilrost pulls code and binaries from npm, apt, Homebrew, NodeSource, the Bun installer, Docker Hub, and Ubuntu cloud images. Every one of these is a trust decision we're making implicitly. A compromised dependency runs with full privileges before any of our sandbox controls are active.
 
 This is not a solvable problem -- it's a managed one. Here's what we actually do, what we don't, and what's worth doing for a hobby project.
 

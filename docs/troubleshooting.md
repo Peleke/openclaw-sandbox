@@ -1,6 +1,6 @@
 # Troubleshooting
 
-This page covers common issues, diagnostic commands, and recovery procedures for OpenClaw Sandbox.
+This page covers common issues, diagnostic commands, and recovery procedures for Bilrost.
 
 ---
 

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-OpenClaw Sandbox runs AI agents inside a hardened Linux VM with strict filesystem isolation, network containment, and secure secrets handling. The architecture uses three nested layers -- macOS host, Lima VM, and Docker containers -- each adding a boundary between the agent and your data.
+Bilrost runs AI agents inside a hardened Linux VM with strict filesystem isolation, network containment, and secure secrets handling. The architecture uses three nested layers -- macOS host, Lima VM, and Docker containers -- each adding a boundary between the agent and your data.
 
 ![Architecture](../diagrams/architecture.svg)
 
@@ -8,7 +8,7 @@ OpenClaw Sandbox runs AI agents inside a hardened Linux VM with strict filesyste
 
 ### Layer 1: macOS Host
 
-The host machine runs the **Python CLI** (`sandbox` command) or `bootstrap.sh`, which orchestrates everything:
+The host machine runs the **Bilrost CLI** (`bilrost` command) or `bootstrap.sh`, which orchestrates everything:
 
 1. **Installs dependencies** from the Brewfile (Lima, Ansible, jq, gitleaks)
 2. **Generates a Lima YAML config** programmatically (no template file -- the config is built directly in bash with `cat` heredocs)
@@ -16,7 +16,7 @@ The host machine runs the **Python CLI** (`sandbox` command) or `bootstrap.sh`, 
 4. **Verifies host mounts** are accessible inside the VM
 5. **Runs the Ansible playbook** over SSH to provision all services
 
-The Python CLI (`sandbox up`, `sandbox status`, `sandbox ssh`, etc.) is the recommended interface. It wraps `bootstrap.sh` with profile-based configuration and an interactive setup wizard (`sandbox init`). An **MCP server** (`sandbox-mcp`) is also available for LLM agents to manage the sandbox programmatically via FastMCP over stdio.
+The Bilrost CLI (`bilrost up`, `bilrost status`, `bilrost ssh`, etc.) is the recommended interface. It wraps `bootstrap.sh` with profile-based configuration and an interactive setup wizard (`bilrost init`). An **MCP server** (`bilrost-mcp`) is also available for LLM agents to manage the sandbox programmatically via FastMCP over stdio.
 
 The host also provides the sync-gate exit path (`scripts/sync-gate.sh`) for getting approved changes back from the VM overlay.
 
@@ -158,7 +158,7 @@ This makes the gateway accessible at `localhost:18789` on the host. The `claw` C
 
 ## How Provisioning Works
 
-The Python CLI (`sandbox up`) is the recommended entry point. It loads a saved profile and calls `bootstrap.sh` under the hood. LLM agents can also use the MCP server (`sandbox-mcp`) which exposes `sandbox_up`, `sandbox_down`, `sandbox_status`, and other tools via FastMCP over stdio.
+The Bilrost CLI (`bilrost up`) is the recommended entry point. It loads a saved profile and calls `bootstrap.sh` under the hood. LLM agents can also use the MCP server (`bilrost-mcp`) which exposes `sandbox_up`, `sandbox_down`, `sandbox_status`, and other tools via FastMCP over stdio.
 
 The main flow in `bootstrap.sh`:
 

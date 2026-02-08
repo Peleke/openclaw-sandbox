@@ -16,8 +16,8 @@ The qortex role creates directory structure for signal exchange and optionally i
 Qortex is enabled by default when the sandbox is provisioned. No extra flags are needed:
 
 ```bash
-# Using the Python CLI (recommended)
-sandbox up
+# Using the Bilrost CLI (recommended)
+bilrost up
 
 # Using bootstrap.sh directly
 ./bootstrap.sh --openclaw ~/Projects/openclaw
@@ -132,7 +132,7 @@ limactl shell openclaw-sandbox -- ~/.local/bin/uv tool list | grep qortex
 
 1. Check uv is installed: `limactl shell openclaw-sandbox -- ~/.local/bin/uv --version`
 2. Check tool list: `limactl shell openclaw-sandbox -- ~/.local/bin/uv tool list`
-3. Re-provision: `sandbox up` or `./bootstrap.sh --openclaw ~/Projects/openclaw`
+3. Re-provision: `bilrost up` or `./bootstrap.sh --openclaw ~/Projects/openclaw`
 
 ### interop.yaml missing
 
@@ -140,7 +140,7 @@ The interop config is only deployed if it doesn't already exist (to preserve man
 
 ```bash
 limactl shell openclaw-sandbox -- rm ~/.buildlog/interop.yaml
-sandbox up  # or ./bootstrap.sh to re-provision
+bilrost up  # or ./bootstrap.sh to re-provision
 ```
 
 ### Memgraph ports not forwarding
@@ -149,6 +149,6 @@ sandbox up  # or ./bootstrap.sh to re-provision
 2. Lima port forwards are baked at creation — to change, delete and recreate:
 
 ```bash
-sandbox destroy -f
+bilrost destroy -f
 ./bootstrap.sh --openclaw ~/Projects/openclaw --memgraph
 ```

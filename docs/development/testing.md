@@ -1,6 +1,6 @@
 # Testing
 
-OpenClaw Sandbox has comprehensive test suites for every Ansible role. Tests are split into fast offline validation and full VM deployment checks.
+Bilrost has comprehensive test suites for every Ansible role. Tests are split into fast offline validation and full VM deployment checks.
 
 ## Test Structure
 
@@ -70,7 +70,7 @@ Full mode runs both Ansible validation and VM deployment tests. The VM must be r
 
 ```bash
 # Ensure VM is up
-sandbox status   # or: limactl list
+bilrost status   # or: limactl list
 
 # Run full suite for a single role
 ./tests/overlay/run-all.sh

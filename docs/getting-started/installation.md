@@ -60,7 +60,7 @@ If you want the agent to have read-only access to an Obsidian vault:
 Here is roughly what you will see:
 
 ```
-[INFO] OpenClaw Sandbox Bootstrap
+[INFO] Bilrost Bootstrap
 [INFO] ==========================
 
 [STEP] Generating Lima configuration...

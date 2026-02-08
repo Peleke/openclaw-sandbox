@@ -9,7 +9,7 @@
 
 ## Series Overview
 
-This publication series uses the OpenClaw Sandbox as a case study to teach practical threat modeling for AI agent systems. Each article focuses on one aspect of the STRIDE framework, adapted for the unique challenges of autonomous AI.
+This publication series uses the Bilrost as a case study to teach practical threat modeling for AI agent systems. Each article focuses on one aspect of the STRIDE framework, adapted for the unique challenges of autonomous AI.
 
 ### Why This Series?
 
@@ -65,7 +65,7 @@ gantt
    - Extensible for AI-specific concerns
    - Battle-tested by industry
 
-4. **Introducing the Case Study: OpenClaw Sandbox**
+4. **Introducing the Case Study: Bilrost**
    - What it is (Lima VM, Ansible, UFW)
    - Architecture overview
    - Why it exists (the problem it solves)
@@ -75,7 +75,7 @@ gantt
    - How to follow along
 
 ### Key Diagrams
-- Architecture diagram of OpenClaw Sandbox
+- Architecture diagram of Bilrost
 - Trust boundary visualization
 - STRIDE wheel with AI extensions
 
@@ -524,7 +524,7 @@ gantt
 
 1. **"Try It Yourself" Boxes**
    - Hands-on exercises for each threat category
-   - Use the actual OpenClaw Sandbox code
+   - Use the actual Bilrost code
 
 2. **Mermaid Diagrams**
    - Consistent visual style
