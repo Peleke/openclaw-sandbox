@@ -7,7 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-02-08
+
+First release as **Bilrost** on [PyPI](https://pypi.org/project/bilrost/). Install with `pipx install bilrost` or `uv tool install bilrost`.
+
 ### Added
+
+**PyPI Publication (PRs #76, #77)**
+- Published as `bilrost` on PyPI with `bilrost` + `bilrost-mcp` entry points
+- Trusted publishing via GitHub Actions OIDC (no API tokens)
+- Build + install verification on Python 3.11/3.12/3.13
+- Legacy `sandbox` / `sandbox-mcp` entry points retained for backward compat
+- Full docs rebrand: "OpenClaw Sandbox" → "Bilrost" across 25 files
 
 **Cadence Wiring (PR #70)**
 - End-to-end vault sync pipeline: Obsidian note → rsync → chokidar → signal bus → Telegram
@@ -127,7 +138,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Basic Ansible playbook structure
 - Gateway role for OpenClaw installation
 
-[Unreleased]: https://github.com/Peleke/openclaw-sandbox/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Peleke/openclaw-sandbox/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/Peleke/openclaw-sandbox/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/Peleke/openclaw-sandbox/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Peleke/openclaw-sandbox/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Peleke/openclaw-sandbox/releases/tag/v0.1.0
