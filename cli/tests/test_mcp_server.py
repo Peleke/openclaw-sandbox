@@ -10,6 +10,7 @@ from sandbox_cli.mcp_server import (
     _load_profile_safe,
     _require_limactl,
     sandbox_agent_identity,
+    sandbox_dashboard_sync,
     sandbox_destroy,
     sandbox_down,
     sandbox_exec,
@@ -400,6 +401,55 @@ class TestSandboxAgentIdentity:
             result = sandbox_agent_identity()
         assert result["found"] is False
         assert result["name"] == ""
+
+
+# ── sandbox_dashboard_sync ───────────────────────────────────────────────
+
+
+class TestSandboxDashboardSync:
+    def test_success(self):
+        cp = subprocess.CompletedProcess([], 0, "synced\n", "")
+        with patch("sandbox_cli.mcp_server.load_profile", return_value=SandboxProfile()), \
+             patch("sandbox_cli.mcp_server.run_dashboard_sync", return_value=cp):
+            result = sandbox_dashboard_sync()
+        assert result["exit_code"] == 0
+        assert "synced" in result["stdout"]
+
+    def test_dry_run_passthrough(self):
+        cp = subprocess.CompletedProcess([], 0, "[DRY RUN]\n", "")
+        with patch("sandbox_cli.mcp_server.load_profile", return_value=SandboxProfile()), \
+             patch("sandbox_cli.mcp_server.run_dashboard_sync", return_value=cp) as mock:
+            sandbox_dashboard_sync(dry_run=True)
+        _, kwargs = mock.call_args
+        assert kwargs["dry_run"] is True
+
+    def test_file_not_found(self):
+        with patch("sandbox_cli.mcp_server.load_profile", return_value=SandboxProfile()), \
+             patch(
+                 "sandbox_cli.mcp_server.run_dashboard_sync",
+                 side_effect=FileNotFoundError("no script"),
+             ):
+            result = sandbox_dashboard_sync()
+        assert result["exit_code"] == -1
+        assert "no script" in result["error"]
+
+    def test_timeout(self):
+        with patch("sandbox_cli.mcp_server.load_profile", return_value=SandboxProfile()), \
+             patch(
+                 "sandbox_cli.mcp_server.run_dashboard_sync",
+                 side_effect=subprocess.TimeoutExpired(cmd="sync", timeout=120),
+             ):
+            result = sandbox_dashboard_sync()
+        assert result["exit_code"] == -1
+        assert "timed out" in result["error"]
+
+    def test_nonzero_exit(self):
+        cp = subprocess.CompletedProcess([], 1, "", "auth error\n")
+        with patch("sandbox_cli.mcp_server.load_profile", return_value=SandboxProfile()), \
+             patch("sandbox_cli.mcp_server.run_dashboard_sync", return_value=cp):
+            result = sandbox_dashboard_sync()
+        assert result["exit_code"] == 1
+        assert "auth error" in result["stderr"]
 
 
 # ── limactl missing ─────────────────────────────────────────────────────

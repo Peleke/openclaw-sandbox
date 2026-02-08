@@ -49,9 +49,26 @@ class Resources(BaseModel):
     disk: str = "50GiB"
 
 
+class Dashboard(BaseModel):
+    enabled: bool = False
+    sync_interval: int = 1  # every Nth heartbeat tick
+    vault_path: str = ""  # defaults to mounts.vault if empty
+    lookback_days: int = 14
+    repos: list[str] = []
+    script_path: str = ""  # auto-discovered from vault/_scripts/ if empty
+
+    @field_validator("vault_path", "script_path", mode="before")
+    @classmethod
+    def expand_paths(cls, v: str) -> str:
+        if v:
+            return str(Path(v).expanduser())
+        return v
+
+
 class SandboxProfile(BaseModel):
     meta: Meta = Meta()
     mounts: Mounts = Mounts()
     mode: Mode = Mode()
     resources: Resources = Resources()
+    dashboard: Dashboard = Dashboard()
     extra_vars: dict[str, Any] = {}

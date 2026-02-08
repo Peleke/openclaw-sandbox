@@ -173,6 +173,28 @@ The bootstrap is **idempotent**. Running it again on an existing VM will re-run 
     ./bootstrap.sh --openclaw ~/new/path --secrets ~/.openclaw-secrets.env
     ```
 
+## Host-Side Scheduling (Optional)
+
+The sandbox ships launchd plists for automated host-side tasks. **These are not installed by bootstrap** — they are manual, opt-in steps because they run on your Mac, not inside the VM.
+
+| Plist | Script | Interval | Purpose |
+|-------|--------|----------|---------|
+| `com.openclaw.vault-sync.plist` | `sync-vault.sh` | 5 min | Keep VM vault current with iCloud |
+| `com.openclaw.cadence.plist` | cadence host process | -- | Ambient AI signal coordinator |
+| `com.openclaw.dashboard-sync.plist` | `dashboard-sync.sh` | 10 min | Sync GitHub issues to Obsidian kanban boards |
+
+To install any of them:
+
+```bash
+cp scripts/<plist-name> ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/<plist-name>
+```
+
+!!! warning "Full Disk Access required"
+    launchd agents that access `~/Documents/` or `~/Library/Mobile Documents/` need Full Disk Access (FDA) for `/bin/bash`. Grant it in **System Settings > Privacy & Security > Full Disk Access**.
+
+For details, see [Cadence > Host-Side Scheduling](../configuration/cadence.md#host-side-scheduling-launchd) and [Dashboard Sync](../configuration/dashboard-sync.md#automated-scheduling-launchd).
+
 ## Common First-Run Issues
 
 ### "Homebrew is not installed"

@@ -1,6 +1,6 @@
 """Tests for profile models."""
 
-from sandbox_cli.models import Meta, Mode, Mounts, Resources, SandboxProfile
+from sandbox_cli.models import Dashboard, Meta, Mode, Mounts, Resources, SandboxProfile
 
 
 def test_default_profile():
@@ -11,6 +11,7 @@ def test_default_profile():
     assert p.resources.cpus == 4
     assert p.resources.memory == "8GiB"
     assert p.resources.disk == "50GiB"
+    assert p.dashboard.enabled is False
     assert p.extra_vars == {}
 
 
@@ -60,3 +61,48 @@ def test_full_profile_from_dict():
     assert p.mode.memgraph_ports == [7687, 7444]
     assert p.resources.cpus == 8
     assert p.extra_vars["telegram_user_id"] == "123456"
+
+
+# ── Dashboard model ──────────────────────────────────────────────────────
+
+
+def test_dashboard_defaults():
+    d = Dashboard()
+    assert d.enabled is False
+    assert d.sync_interval == 1
+    assert d.vault_path == ""
+    assert d.lookback_days == 14
+    assert d.repos == []
+    assert d.script_path == ""
+
+
+def test_dashboard_path_expansion():
+    d = Dashboard(vault_path="~/Vaults/test", script_path="~/scripts/sync.py")
+    assert "~" not in d.vault_path
+    assert d.vault_path.endswith("/Vaults/test")
+    assert "~" not in d.script_path
+    assert d.script_path.endswith("/scripts/sync.py")
+
+
+def test_dashboard_empty_paths_stay_empty():
+    d = Dashboard()
+    assert d.vault_path == ""
+    assert d.script_path == ""
+
+
+def test_profile_with_dashboard():
+    data = {
+        "mounts": {"vault": "/tmp/vault"},
+        "dashboard": {
+            "enabled": True,
+            "sync_interval": 3,
+            "lookback_days": 30,
+            "repos": ["Peleke/openclaw", "Peleke/cadence"],
+        },
+    }
+    p = SandboxProfile.model_validate(data)
+    assert p.dashboard.enabled is True
+    assert p.dashboard.sync_interval == 3
+    assert p.dashboard.lookback_days == 30
+    assert p.dashboard.repos == ["Peleke/openclaw", "Peleke/cadence"]
+    assert p.dashboard.vault_path == ""  # falls back to mounts.vault at runtime

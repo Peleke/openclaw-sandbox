@@ -188,7 +188,7 @@ Cadence can load custom skill definitions from this mount for use in the signal 
 
 ## Host-Side Scheduling (launchd)
 
-Two launchd plist files in `scripts/` provide host-side scheduling for macOS:
+Several launchd plist files in `scripts/` provide host-side scheduling for macOS. **These are manual installs** — bootstrap and Ansible provision the VM but do not modify your macOS LaunchAgents.
 
 ### Vault Sync (every 5 minutes)
 
@@ -198,18 +198,29 @@ Two launchd plist files in `scripts/` provide host-side scheduling for macOS:
 
 `scripts/com.openclaw.cadence.plist` — runs the cadence host-side coordinator.
 
-To install the plists:
+### Dashboard Sync (every 10 minutes)
+
+`scripts/com.openclaw.dashboard-sync.plist` — runs `dashboard-sync.sh` to pull GitHub issues into Obsidian kanban boards. See [Dashboard Sync](dashboard-sync.md) for full configuration.
+
+### Installing the plists
 
 ```bash
+# Copy whichever plists you want to automate
 cp scripts/com.openclaw.vault-sync.plist ~/Library/LaunchAgents/
 cp scripts/com.openclaw.cadence.plist ~/Library/LaunchAgents/
+cp scripts/com.openclaw.dashboard-sync.plist ~/Library/LaunchAgents/
 
+# Load them (starts immediately)
 launchctl load ~/Library/LaunchAgents/com.openclaw.vault-sync.plist
 launchctl load ~/Library/LaunchAgents/com.openclaw.cadence.plist
+launchctl load ~/Library/LaunchAgents/com.openclaw.dashboard-sync.plist
 ```
 
 !!! warning "Full Disk Access required"
-    launchd agents cannot access `~/Documents/` without Full Disk Access (FDA) for `/bin/bash`. Grant FDA to `/bin/bash` in **System Settings > Privacy & Security > Full Disk Access**. Manual `sync-vault.sh` runs work fine because your terminal already has FDA.
+    launchd agents cannot access `~/Documents/` without Full Disk Access (FDA) for `/bin/bash`. Grant FDA to `/bin/bash` in **System Settings > Privacy & Security > Full Disk Access**. Manual script runs from Terminal work fine because Terminal typically has FDA.
+
+!!! note "Not handled by bootstrap"
+    All host-side launchd plists are manual installs. Bootstrap provisions the **VM** via Ansible — it does not install macOS LaunchAgents. This is by design: host-side scheduling is a user choice, not a provisioning step.
 
 ## Ansible Variables
 
