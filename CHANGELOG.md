@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to openclaw-sandbox are documented here.
+All notable changes to Bilrost (formerly openclaw-sandbox) are documented here.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -17,7 +17,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `--exclude=.obsidian/` in rsync avoids ESTALE on virtiofs lower-layer config files
 
 **MCP Server (PR #65)**
-- Agent-driven sandbox management via FastMCP (`sandbox-mcp` console script)
+- Agent-driven sandbox management via FastMCP (`bilrost-mcp` console script)
 - Tools: `sandbox_up`, `sandbox_down`, `sandbox_status`, `sandbox_ssh`, `sandbox_sync`
 - Runs over stdio transport for seamless integration with LLM agents
 - Plain-function implementations for testability; registered via `mcp.tool(fn)`
@@ -28,9 +28,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 **Python CLI (PRs #60, #62)**
 - Typer-based CLI replacing bash bootstrap as the primary interface
-- Commands: `sandbox up`, `sandbox down`, `sandbox destroy`, `sandbox status`, `sandbox ssh`, `sandbox sync`, `sandbox dashboard`
-- Profile-based configuration via `~/.openclaw-sandbox/profiles/`
-- Interactive `sandbox init` wizard for profile creation
+- Commands: `bilrost up`, `bilrost down`, `bilrost destroy`, `bilrost status`, `bilrost ssh`, `bilrost sync`, `bilrost dashboard`
+- Profile-based configuration via `~/.openclaw/sandbox-profile.toml`
+- Interactive `bilrost init` wizard for profile creation
 
 **File Ownership Fix (PR #58)**
 - Agent identity persistence across VM restarts

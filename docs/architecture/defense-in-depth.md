@@ -1,6 +1,6 @@
 # Defense in Depth
 
-OpenClaw Sandbox uses two layers of isolation that work together. Neither layer alone is sufficient -- the point is that compromising one layer does not give an attacker (or a misbehaving agent) access to your host filesystem or credentials.
+Bilrost uses two layers of isolation that work together. Neither layer alone is sufficient -- the point is that compromising one layer does not give an attacker (or a misbehaving agent) access to your host filesystem or credentials.
 
 ![Defense in Depth](../diagrams/defense-in-depth.svg)
 

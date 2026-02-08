@@ -1,6 +1,6 @@
 <div align="center">
 
-# OpenClaw Sandbox
+# Bilrost
 
 ### Secure, Isolated VM for Running AI Agents
 
@@ -30,22 +30,22 @@ You need the agent to do real work — access your code, call APIs, run tools �
 
 ## The Solution
 
-**OpenClaw Sandbox** runs agents inside a hardened Lima VM with strict network policies, OverlayFS filesystem isolation, and Docker-containerized tool execution. Your code is mounted read-only. All writes are contained in an overlay. Changes only reach your host through a validated sync gate with secret scanning.
+**Bilrost** runs agents inside a hardened Lima VM with strict network policies, OverlayFS filesystem isolation, and Docker-containerized tool execution. Your code is mounted read-only. All writes are contained in an overlay. Changes only reach your host through a validated sync gate with secret scanning.
 
 One command to provision. One command to tear down. Everything in between is contained.
 
 ```
-You: sandbox up
+You: bilrost up
      → Lima VM created (Ubuntu 24.04, Apple VZ)
      → Ansible provisions 10 roles (overlay, Docker, firewall, secrets, gateway...)
      → Gateway starts on :18789
      → Agent is running. You are safe.
 
-You: sandbox status
+You: bilrost status
      → VM: Running | Mode: secure | Overlay: active
-     → Agent: Claw (🦞) | Observations: 847
+     → Agent: Vindler (🦞) | Observations: 847
 
-You: sandbox ssh
+You: bilrost ssh
      → You're inside the VM. Do whatever you want.
 ```
 
@@ -65,7 +65,7 @@ UFW firewall with explicit allowlist — only HTTPS, DNS, Tailscale, and NTP are
 Three injection methods (direct, secrets file, config mount). Secrets land in `/etc/openclaw/secrets.env` with `0600` permissions, loaded via `EnvironmentFile=` — never in process lists, never in logs. All Ansible tasks use `no_log: true`.
 
 ### 📂 Gated Sync
-Changes only reach your host through `sandbox sync`, which runs gitleaks secret scanning, path allowlisting, and size/filetype checks. In secure mode, you approve every change. In YOLO mode, it auto-syncs every 30 seconds.
+Changes only reach your host through `bilrost sync`, which runs gitleaks secret scanning, path allowlisting, and size/filetype checks. In secure mode, you approve every change. In YOLO mode, it auto-syncs every 30 seconds.
 
 ### 🐳 Docker Sandbox
 OpenClaw's built-in sandbox containerizes tool executions inside the VM. Every session gets its own container with bridge networking (configurable to `none` for full air-gap). The sandbox image is auto-augmented with `gh` if missing.
@@ -83,7 +83,7 @@ Pairing-based access control. Pre-seed your Telegram user ID or use the built-in
 [buildlog](https://github.com/Peleke/buildlog-template) is pre-installed for ambient learning capture — structured trajectories, Thompson Sampling for rule surfacing, automatic CLAUDE.md rendering. buildlog's own MCP server is registered with its full tool suite.
 
 ### ⚡ Zero-Config Deploy
-Single `sandbox up` from macOS. Homebrew, Lima, Ansible — all dependencies installed automatically. Apple Silicon with Rosetta, or Intel. ~10GB disk.
+Single `bilrost up` from macOS. Homebrew, Lima, Ansible — all dependencies installed automatically. Apple Silicon with Rosetta, or Intel. ~10GB disk.
 
 ---
 
@@ -104,29 +104,29 @@ Single `sandbox up` from macOS. Homebrew, Lima, Ansible — all dependencies ins
 
 ```bash
 # Install the CLI
-pip install openclaw-sandbox
-# or: uv pip install openclaw-sandbox
+pip install bilrost
+# or: pipx install bilrost / uv tool install bilrost
 
 # Interactive setup — creates ~/.openclaw/sandbox-profile.toml
-sandbox init
+bilrost init
 
 # Provision the VM (first run takes ~5 minutes)
-sandbox up
+bilrost up
 
 # Check status
-sandbox status
+bilrost status
 
 # SSH into the VM
-sandbox ssh
+bilrost ssh
 
 # Sync overlay changes to host (with secret scanning)
-sandbox sync
+bilrost sync
 
 # Stop the VM
-sandbox down
+bilrost down
 
 # Delete the VM entirely
-sandbox destroy
+bilrost destroy
 ```
 
 ### From Source
@@ -139,7 +139,7 @@ cd openclaw-sandbox
 uv pip install -e cli/
 
 # Provision
-sandbox up
+bilrost up
 ```
 
 ---
@@ -150,7 +150,7 @@ sandbox up
 ┌──────────────────────────────────────────────────────────┐
 │ macOS Host                                                │
 │                                                           │
-│  ~/Projects/openclaw ◄──── sandbox sync (approved only)  │
+│  ~/Projects/openclaw ◄──── bilrost sync (approved only)  │
 │                                                           │
 │  ╔════════════════════════════════════════════════════╗   │
 │  ║ Lima VM (Ubuntu 24.04)                             ║   │
@@ -202,23 +202,23 @@ Layer 2 (docker):    tool execution   → Docker container (bridge network)
 
 | Command | Description |
 |---------|-------------|
-| `sandbox init` | Interactive wizard — creates `~/.openclaw/sandbox-profile.toml` |
-| `sandbox up` | Provision (or reprovision) the VM |
-| `sandbox up --fresh` | Destroy + reprovision from scratch |
-| `sandbox down` | Stop the VM (force kill) |
-| `sandbox destroy` | Delete the VM entirely (with confirmation) |
-| `sandbox destroy -f` | Delete without confirmation |
-| `sandbox status` | Show VM state, profile summary, agent identity |
-| `sandbox ssh` | SSH into the VM (replaces process for TTY) |
-| `sandbox onboard` | Run the onboarding wizard inside the VM |
-| `sandbox sync` | Sync overlay changes to host (with validation) |
-| `sandbox sync --dry-run` | Preview sync without applying |
-| `sandbox dashboard` | Open the gateway dashboard |
-| `sandbox dashboard green` | Open a specific dashboard page |
+| `bilrost init` | Interactive wizard — creates `~/.openclaw/sandbox-profile.toml` |
+| `bilrost up` | Provision (or reprovision) the VM |
+| `bilrost up --fresh` | Destroy + reprovision from scratch |
+| `bilrost down` | Stop the VM (force kill) |
+| `bilrost destroy` | Delete the VM entirely (with confirmation) |
+| `bilrost destroy -f` | Delete without confirmation |
+| `bilrost status` | Show VM state, profile summary, agent identity |
+| `bilrost ssh` | SSH into the VM (replaces process for TTY) |
+| `bilrost onboard` | Run the onboarding wizard inside the VM |
+| `bilrost sync` | Sync overlay changes to host (with validation) |
+| `bilrost sync --dry-run` | Preview sync without applying |
+| `bilrost dashboard` | Open the gateway dashboard |
+| `bilrost dashboard green` | Open a specific dashboard page |
 
 ### Profile Configuration
 
-`sandbox init` creates `~/.openclaw/sandbox-profile.toml`:
+`bilrost init` creates `~/.openclaw/sandbox-profile.toml`:
 
 ```toml
 [mounts]
@@ -250,13 +250,13 @@ The MCP server lets agents manage the sandbox programmatically — no shell wrap
 
 ```bash
 # Install with MCP support
-pip install openclaw-sandbox
+pip install bilrost
 
 # Add to Claude Code settings (~/.claude/settings.json)
 {
   "mcpServers": {
-    "sandbox": {
-      "command": "sandbox-mcp"
+    "bilrost": {
+      "command": "bilrost-mcp"
     }
   }
 }
@@ -289,7 +289,7 @@ pip install openclaw-sandbox
 
 | Mode | Flag | Host Mounts | Overlay | Sync |
 |------|------|-------------|---------|------|
-| **Secure** (default) | _(none)_ | Read-only | Active | Manual via `sandbox sync` |
+| **Secure** (default) | _(none)_ | Read-only | Active | Manual via `bilrost sync` |
 | **YOLO** | `--yolo` | Read-only | Active | Auto-sync every 30s |
 | **YOLO-Unsafe** | `--yolo-unsafe` | Read-write | Disabled | Direct (legacy) |
 
@@ -313,7 +313,7 @@ Three ways to provide secrets, in priority order:
 
 ```bash
 # Via profile extra_vars or bootstrap.sh fallback
-sandbox up  # with extra_vars in profile
+bilrost up  # with extra_vars in profile
 ```
 
 ### 2. Secrets File (recommended for dev)
@@ -327,14 +327,14 @@ GH_TOKEN=ghp_xxx
 EOF
 
 # Point your profile at it
-sandbox init  # → secrets = "~/.openclaw-secrets.env"
+bilrost init  # → secrets = "~/.openclaw-secrets.env"
 ```
 
 ### 3. Config Mount (full OpenClaw config)
 
 ```bash
 # Point your profile at ~/.openclaw
-sandbox init  # → config = "~/.openclaw"
+bilrost init  # → config = "~/.openclaw"
 ```
 
 ### Supported Secrets
@@ -383,7 +383,7 @@ echo 'TELEGRAM_BOT_TOKEN=your-bot-token' >> ~/.openclaw-secrets.env
 # Pre-seed your Telegram user ID
 # Get it from @userinfobot on Telegram
 # Add to profile extra_vars: telegram_user_id = "YOUR_ID"
-sandbox up
+bilrost up
 ```
 
 Access control uses OpenClaw's pairing system (`dmPolicy: "pairing"`):
@@ -400,7 +400,7 @@ buildlog is pre-configured and the MCP server is registered. Claude Code has acc
 
 ```bash
 # Check state
-sandbox ssh
+bilrost ssh
 buildlog overview
 
 # Commit with logging
@@ -495,26 +495,26 @@ uv run --directory cli pytest tests/ -v
 
 ```bash
 # Check VM status
-sandbox status
+bilrost status
 
 # View gateway logs
-sandbox ssh
+bilrost ssh
 sudo journalctl -u openclaw-gateway -f
 
 # Check firewall rules
-sandbox ssh
+bilrost ssh
 sudo ufw status verbose
 
 # Verify secrets loaded
-sandbox ssh
+bilrost ssh
 sudo cat /etc/openclaw/secrets.env
 
 # Check overlay state
-sandbox ssh
+bilrost ssh
 overlay-status
 
 # Reset overlay (discard all writes)
-sandbox ssh
+bilrost ssh
 sudo overlay-reset
 ```
 

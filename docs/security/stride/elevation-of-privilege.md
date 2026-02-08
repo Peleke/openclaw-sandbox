@@ -2,7 +2,7 @@
 
 We run arbitrary LLM-generated code inside a VM that has API keys, Docker access, and writable mounts back to the host. The question isn't whether there are privilege escalation paths -- it's how many layers an attacker has to punch through.
 
-This analysis enumerates the realistic escalation vectors for the OpenClaw Sandbox and is honest about which ones we've addressed and which ones remain open.
+This analysis enumerates the realistic escalation vectors for the Bilrost and is honest about which ones we've addressed and which ones remain open.
 
 ## Privilege Boundaries
 

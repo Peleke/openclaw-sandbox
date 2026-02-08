@@ -1,6 +1,6 @@
 # Filesystem Modes
 
-OpenClaw Sandbox provides three filesystem modes that control how the agent interacts with your host files. The default is the most restrictive -- you opt into less isolation as needed.
+Bilrost provides three filesystem modes that control how the agent interacts with your host files. The default is the most restrictive -- you opt into less isolation as needed.
 
 ## How It Works
 
@@ -161,7 +161,7 @@ Lima mount writability is set at VM creation time. You can't switch to or from Y
 ```
 
 !!! note
-    This is a Lima limitation, not an OpenClaw Sandbox one. Virtiofs mount options are baked into the VM definition at creation time.
+    This is a Lima limitation, not a Bilrost one. Virtiofs mount options are baked into the VM definition at creation time.
 
 ## Obsidian Vault Overlay
 

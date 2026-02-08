@@ -1,6 +1,6 @@
-# OpenClaw Sandbox
+# Bilrost
 
-**Secure, isolated VM environment for running OpenClaw agents.**
+**Secure, isolated VM environment for running AI agents.**
 
 ---
 
@@ -17,7 +17,7 @@ You need a boundary between "what the agent can touch" and "everything else on y
 
 ## The Solution
 
-OpenClaw Sandbox runs your agents inside a **hardened Linux VM** (Ubuntu 24.04 on Lima) with strict network policies, layered filesystem isolation, and secure secrets handling. Everything provisions from a single command on macOS.
+Bilrost runs your agents inside a **hardened Linux VM** (Ubuntu 24.04 on Lima) with strict network policies, layered filesystem isolation, and secure secrets handling. Everything provisions from a single command on macOS.
 
 ```
 macOS Host
@@ -34,11 +34,11 @@ Changes only reach your host through a **validated sync gate** that runs gitleak
 
 | Feature | What it does |
 |---------|-------------|
-| [Python CLI](usage/bootstrap-flags.md) | `sandbox up`, `sandbox status`, `sandbox ssh` — profile-based management |
+| [Python CLI](usage/bootstrap-flags.md) | `bilrost up`, `bilrost status`, `bilrost ssh` — profile-based management |
 | [Dual-Container Isolation](configuration/docker-sandbox.md) | Per-tool network routing: air-gapped by default, bridge only for tools that need it |
 | [Filesystem Isolation](architecture/overlay-filesystem.md) | OverlayFS makes host mounts read-only; all writes land in an overlay layer |
 | [Network Containment](configuration/network-policy.md) | UFW firewall allows only HTTPS, DNS, and Tailscale; everything else is denied and logged |
-| [MCP Server](configuration/docker-sandbox.md) | LLM agents manage the sandbox via FastMCP (`sandbox-mcp`) |
+| [MCP Server](configuration/docker-sandbox.md) | LLM agents manage the sandbox via FastMCP (`bilrost-mcp`) |
 | [Secrets Management](configuration/secrets.md) | Multiple injection methods, file permissions at `0600`, never exposed in logs |
 | [Config/Data Isolation](configuration/obsidian-vault.md) | Config files copied (patchable), agent data symlinked to persistent mounts |
 | [Gated Sync](usage/sync-gate.md) | gitleaks scan + path allowlist before any changes reach the host |
@@ -52,24 +52,29 @@ Changes only reach your host through a **validated sync gate** that runs gitleak
 ## Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/Peleke/openclaw-sandbox.git
-cd openclaw-sandbox
-
-# Install the CLI
-pip install -e cli/
+# Install from PyPI
+pip install bilrost
+# or: pipx install bilrost / uv tool install bilrost
 
 # Create a profile interactively
-sandbox init
+bilrost init
 
 # Provision the VM
-sandbox up
+bilrost up
 
 # Check status
-sandbox status
+bilrost status
 
 # SSH into the VM
-sandbox ssh
+bilrost ssh
+```
+
+Or from source:
+
+```bash
+git clone https://github.com/Peleke/openclaw-sandbox.git
+cd openclaw-sandbox
+uv pip install -e cli/
 ```
 
 Or use `bootstrap.sh` directly:

@@ -30,8 +30,8 @@ Cadence requires:
 ### 1. Bootstrap with vault
 
 ```bash
-# Using the Python CLI (recommended) — configure vault path during `sandbox init`
-sandbox up
+# Using the Bilrost CLI (recommended) — configure vault path during `bilrost init`
+bilrost up
 
 # Using bootstrap.sh directly
 ./bootstrap.sh --openclaw ~/Projects/openclaw \

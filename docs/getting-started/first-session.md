@@ -231,8 +231,8 @@ If you want a clean slate:
 | Delete VM | `./bootstrap.sh --delete` |
 | Re-provision | `./bootstrap.sh --openclaw ~/Projects/openclaw` |
 | Run onboard | `./bootstrap.sh --onboard` |
-| Dashboard sync | `sandbox dashboard sync` |
-| Dashboard sync (dry run) | `sandbox dashboard sync --dry-run` |
+| Dashboard sync | `bilrost dashboard sync` |
+| Dashboard sync (dry run) | `bilrost dashboard sync --dry-run` |
 
 ## Next Steps
 

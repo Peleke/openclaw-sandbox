@@ -1,29 +1,29 @@
 # Bootstrap Flags
 
 !!! note "Python CLI is the recommended interface"
-    The primary way to manage your sandbox is now the **Python CLI** (`sandbox` command). The CLI wraps `bootstrap.sh` with a profile-based configuration system and interactive setup:
+    The primary way to manage your sandbox is now the **Bilrost CLI** (`bilrost` command, `pip install bilrost`). The CLI wraps `bootstrap.sh` with a profile-based configuration system and interactive setup:
 
     ```bash
     # Create a profile interactively
-    sandbox init
+    bilrost init
 
     # Provision or re-provision
-    sandbox up
+    bilrost up
 
     # Check status
-    sandbox status
+    bilrost status
 
     # SSH into the VM
-    sandbox ssh
+    bilrost ssh
 
     # Sync overlay changes to host
-    sandbox sync
+    bilrost sync
 
     # Stop the VM
-    sandbox down
+    bilrost down
 
     # Delete the VM
-    sandbox destroy
+    bilrost destroy
     ```
 
     See [Getting Started](../getting-started/first-session.md) for a walkthrough. The flags documented below still work with `bootstrap.sh` directly and are useful for understanding what the CLI does under the hood.
@@ -314,26 +314,26 @@ Running `bootstrap.sh` again on an existing VM skips creation and just re-runs t
 
 ## Full Examples
 
-### Using the Python CLI (recommended)
+### Using the Bilrost CLI (recommended)
 
 ```bash
 # Interactive profile setup — walks you through all options
-sandbox init
+bilrost init
 
 # Provision the VM with your saved profile
-sandbox up
+bilrost up
 
 # Re-provision after config changes
-sandbox up
+bilrost up
 
 # Check what's running
-sandbox status
+bilrost status
 
 # SSH into the VM
-sandbox ssh
+bilrost ssh
 
 # Sync overlay changes back to host
-sandbox sync
+bilrost sync
 ```
 
 ### Using bootstrap.sh directly
