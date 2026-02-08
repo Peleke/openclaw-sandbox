@@ -3,10 +3,29 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "sandbox-cli"
+name = "bilrost"
 version = "0.1.0"
-description = "Typer CLI wrapper for OpenClaw sandbox bootstrap"
+description = "Hardened Lima VM for running AI agents — overlay isolation, network containment, secrets management, and gated sync."
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
+authors = [{ name = "Peleke Sengstacke" }]
+keywords = ["sandbox", "ai-agents", "lima", "vm", "security", "isolation"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
+    "Topic :: System :: Emulators",
+]
 dependencies = [
     "typer>=0.12,<1",
     "pydantic>=2,<3",
@@ -20,12 +39,29 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "pyyaml>=6,<7"]
 
+[project.urls]
+Homepage = "https://github.com/Peleke/openclaw-sandbox"
+Documentation = "https://peleke.github.io/openclaw-sandbox/"
+Repository = "https://github.com/Peleke/openclaw-sandbox"
+Issues = "https://github.com/Peleke/openclaw-sandbox/issues"
+Changelog = "https://github.com/Peleke/openclaw-sandbox/blob/main/CHANGELOG.md"
+
 [project.scripts]
+bilrost = "sandbox_cli.app:app"
+bilrost-mcp = "sandbox_cli.mcp_server:main"
+# Keep legacy entry points for backward compat
 sandbox = "sandbox_cli.app:app"
 sandbox-mcp = "sandbox_cli.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sandbox_cli"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/sandbox_cli/",
+    "README.md",
+    "LICENSE",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

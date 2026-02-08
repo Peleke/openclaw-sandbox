@@ -73,6 +73,39 @@ wheels = [
 ]
 
 [[package]]
+name = "bilrost"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "fastmcp" },
+    { name = "jinja2" },
+    { name = "pydantic" },
+    { name = "rich" },
+    { name = "tomli-w" },
+    { name = "typer" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastmcp", specifier = ">=2,<3" },
+    { name = "jinja2", specifier = ">=3.1,<4" },
+    { name = "pydantic", specifier = ">=2,<3" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<9" },
+    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6,<7" },
+    { name = "rich", specifier = ">=13,<14" },
+    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2,<3" },
+    { name = "tomli-w", specifier = ">=1,<2" },
+    { name = "typer", specifier = ">=0.12,<1" },
+]
+provides-extras = ["dev"]
+
+[[package]]
 name = "cachetools"
 version = "7.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1487,39 +1520,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/20/91/092bacadeda3edf92bf743cc96a7be133e13a39cdbfd7b5082e7ab638406/rpds_py-0.30.0-pp311-pypy311_pp73-musllinux_1_2_i686.whl", hash = "sha256:1b151685b23929ab7beec71080a8889d4d6d9fa9a983d213f07121205d48e2c4", size = 599782, upload-time = "2025-11-30T20:24:35.169Z" },
     { url = "https://files.pythonhosted.org/packages/d1/b7/b95708304cd49b7b6f82fdd039f1748b66ec2b21d6a45180910802f1abf1/rpds_py-0.30.0-pp311-pypy311_pp73-musllinux_1_2_x86_64.whl", hash = "sha256:ac37f9f516c51e5753f27dfdef11a88330f04de2d564be3991384b2f3535d02e", size = 562191, upload-time = "2025-11-30T20:24:36.853Z" },
 ]
-
-[[package]]
-name = "sandbox-cli"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "fastmcp" },
-    { name = "jinja2" },
-    { name = "pydantic" },
-    { name = "rich" },
-    { name = "tomli-w" },
-    { name = "typer" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastmcp", specifier = ">=2,<3" },
-    { name = "jinja2", specifier = ">=3.1,<4" },
-    { name = "pydantic", specifier = ">=2,<3" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<9" },
-    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6,<7" },
-    { name = "rich", specifier = ">=13,<14" },
-    { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2,<3" },
-    { name = "tomli-w", specifier = ">=1,<2" },
-    { name = "typer", specifier = ">=0.12,<1" },
-]
-provides-extras = ["dev"]
 
 [[package]]
 name = "secretstorage"
