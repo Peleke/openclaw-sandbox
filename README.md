@@ -49,7 +49,7 @@ You: sandbox ssh
      → You're inside the VM. Do whatever you want.
 ```
 
-**10 Ansible roles. 273 CLI tests. 9 MCP tools. Zero manual config.**
+**12 Ansible roles. 273 CLI tests. 9 MCP tools. Zero manual config.**
 
 ---
 
@@ -80,7 +80,7 @@ Mount your vault read-only into the VM and sandbox containers. The agent can rea
 Pairing-based access control. Pre-seed your Telegram user ID or use the built-in pairing flow. No open access by default.
 
 ### 📊 buildlog Integration
-[buildlog](https://github.com/Peleke/buildlog-template) is pre-installed for ambient learning capture — structured trajectories, Thompson Sampling for rule surfacing, automatic CLAUDE.md rendering. MCP server registered with 29 tools.
+[buildlog](https://github.com/Peleke/buildlog-template) is pre-installed for ambient learning capture — structured trajectories, Thompson Sampling for rule surfacing, automatic CLAUDE.md rendering. buildlog's own MCP server is registered with its full tool suite.
 
 ### ⚡ Zero-Config Deploy
 Single `sandbox up` from macOS. Homebrew, Lima, Ansible — all dependencies installed automatically. Apple Silicon with Rosetta, or Intel. ~10GB disk.
@@ -233,6 +233,8 @@ vault = "~/Documents/Vaults/ClawTheCurious"
 yolo = false
 yolo_unsafe = false
 no_docker = false
+memgraph = false
+memgraph_ports = []
 
 [resources]
 cpus = 4
@@ -436,16 +438,18 @@ openclaw-sandbox/
 ├── ansible/
 │   ├── playbook.yml              # Main playbook
 │   └── roles/
-│       ├── overlay/              # OverlayFS isolation
-│       ├── sandbox/              # Docker sandbox config
+│       ├── overlay/              # OverlayFS isolation + obsidian vault overlay
+│       ├── sandbox/              # Docker sandbox config + image augmentation
 │       ├── docker/               # Docker CE installation
-│       ├── secrets/              # Secrets extraction + injection
-│       ├── gh-cli/               # GitHub CLI
-│       ├── obsidian/             # Vault mount + container bind
+│       ├── secrets/              # Secrets extraction + injection + shell export
+│       ├── gh-cli/               # GitHub CLI from official APT repo
 │       ├── gateway/              # OpenClaw gateway systemd service
 │       ├── firewall/             # UFW network policy
+│       ├── sync-gate/            # Gated sync validation pipeline
 │       ├── buildlog/             # buildlog + MCP registration
-│       └── qortex/               # Qortex interop + Memgraph
+│       ├── qortex/               # Qortex interop + Memgraph
+│       ├── tailscale/            # Tailscale VPN integration
+│       └── cadence/              # Service startup sequencing
 ├── scripts/
 │   ├── sync-gate.sh              # Host-side sync with gitleaks
 │   ├── dashboard.sh              # Gateway dashboard opener
