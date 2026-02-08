@@ -6,7 +6,7 @@
 cadence_enabled: false
 
 # Vault path inside VM (mounted from host)
-cadence_vault_path: "/mnt/obsidian"
+cadence_vault_path: "/workspace-obsidian"
 
 # Delivery channel: telegram, discord, log
 cadence_delivery_channel: "telegram"

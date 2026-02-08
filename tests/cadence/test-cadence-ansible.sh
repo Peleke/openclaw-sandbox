@@ -125,6 +125,13 @@ if [[ -f "$TEMPLATE_FILE" ]]; then
     fi
   done
 
+  # Check fileLogPath in delivery section
+  if grep -q "fileLogPath" "$TEMPLATE_FILE"; then
+    log_pass "Template includes fileLogPath for container bridging"
+  else
+    log_fail "Template missing fileLogPath in delivery section"
+  fi
+
   # Check JSON structure (basic brace matching)
   OPEN_BRACES=$(grep -o '{' "$TEMPLATE_FILE" | wc -l | tr -d ' ')
   CLOSE_BRACES=$(grep -o '}' "$TEMPLATE_FILE" | wc -l | tr -d ' ')
@@ -215,10 +222,10 @@ fi
 
 # Test: Vault path is VM path, not macOS
 VAULT_DEFAULT=$(grep "cadence_vault_path:" "$DEFAULTS_FILE" | sed 's/.*: *//' | tr -d '"')
-if [[ "$VAULT_DEFAULT" == /mnt/* ]]; then
+if [[ "$VAULT_DEFAULT" == /mnt/* || "$VAULT_DEFAULT" == /workspace* ]]; then
   log_pass "Default vault path is VM path: $VAULT_DEFAULT"
 elif [[ "$VAULT_DEFAULT" == /Users/* ]]; then
-  log_fail "Default vault path is macOS path (should be /mnt/...)"
+  log_fail "Default vault path is macOS path (should be /mnt/... or /workspace-...)"
 else
   log_info "Default vault path: $VAULT_DEFAULT"
 fi

@@ -137,7 +137,10 @@ def _sync_vault(
         console.print(f"[yellow]Vault path does not exist: {vault_path}[/yellow]")
         return
 
-    target = "/var/lib/openclaw/overlay/obsidian/upper/"
+    # Write to the merged overlay mount so inotify fires and file watchers
+    # (chokidar/cadence) see the changes.  Writing directly to the raw upper
+    # dir bypasses inotify on the merged mount.
+    target = "/workspace-obsidian/"
     console.print("[blue]Syncing Obsidian vault into VM overlay...[/blue]")
     console.print(f"  Source: {vault_path} (host)")
     console.print(f"  Target: {target} (VM)")
@@ -148,7 +151,7 @@ def _sync_vault(
     )
     result = subprocess.run(
         [
-            "rsync", "-a", "--delete",
+            "rsync", "-a", "--delete", "--exclude=.obsidian/",
             "-e", ssh_cmd,
             f"{vault_path}/",
             f"{ssh.user}@{ssh.host}:{target}",
