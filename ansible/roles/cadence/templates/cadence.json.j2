@@ -3,8 +3,8 @@
   "vaultPath": "{{ cadence_vault_path }}",
   "delivery": {
     "channel": "{{ cadence_delivery_channel }}"{% if cadence_telegram_chat_id %},
-    "telegramChatId": "{{ cadence_telegram_chat_id }}"{% endif %}
-
+    "telegramChatId": "{{ cadence_telegram_chat_id }}"{% endif %},
+    "fileLogPath": "{{ user_home }}/.openclaw/cadence/signals.jsonl"
   },
   "pillars": {{ cadence_pillars | to_json }},
   "llm": {

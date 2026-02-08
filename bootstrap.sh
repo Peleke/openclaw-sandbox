@@ -20,6 +20,7 @@ VAULT_PATH=""
 CONFIG_PATH=""       # Optional: mount host ~/.openclaw for auth/config
 AGENT_DATA_PATH=""   # Optional: mount host ~/.openclaw/agents for persistent agent data
 BUILDLOG_DATA_PATH="" # Optional: mount host ~/.buildlog for persistent buildlog data
+SKILLS_PATH=""       # Optional: mount custom skills directory
 SECRETS_PATH=""      # Optional: mount a secrets .env file
 
 # Overlay mode flags
@@ -78,6 +79,8 @@ Options:
                     Example: --agent-data ~/.openclaw/agents
   --buildlog-data PATH  Mount host buildlog dir for persistent buildlog.db + emissions
                     Example: --buildlog-data ~/.buildlog
+  --skills PATH     Mount custom skills directory at /mnt/skills-custom (read-only)
+                    Example: --skills ~/Projects/skills/skills/custom
   --vault PATH      Mount an Obsidian vault at /mnt/obsidian (read/write)
                     Example: --vault "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault"
   --memgraph        Forward all Memgraph ports (7687 Bolt, 3000 Lab UI, 7444 monitoring)
@@ -113,6 +116,7 @@ Examples:
   ./bootstrap.sh --openclaw ~/Projects/openclaw --config ~/.openclaw --agent-data ~/.openclaw/agents --buildlog-data ~/.buildlog
   ./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
   ./bootstrap.sh --openclaw ../openclaw -e "secrets_anthropic_api_key=sk-ant-xxx"
+  ./bootstrap.sh --openclaw ../openclaw --skills ~/Projects/skills/skills/custom
   ./bootstrap.sh --openclaw ../openclaw --yolo          # Auto-sync mode
   ./bootstrap.sh --openclaw ../openclaw --yolo-unsafe   # Legacy rw mounts
   ./bootstrap.sh --shell                    # Open VM shell
@@ -225,6 +229,16 @@ generate_lima_config() {
         fi
     fi
 
+    # Validate skills path if specified
+    local skills_path=""
+    if [[ -n "$SKILLS_PATH" ]]; then
+        skills_path="$(expand_path "$SKILLS_PATH")"
+        if [[ ! -d "$skills_path" ]]; then
+            log_error "Skills path does not exist: $skills_path"
+            exit 1
+        fi
+    fi
+
     # Validate secrets path if specified
     local secrets_path=""
     if [[ -n "$SECRETS_PATH" ]]; then
@@ -325,6 +339,15 @@ EOF
   - location: "${buildlog_data_path}"
     mountPoint: "/mnt/buildlog-data"
     writable: true
+EOF
+    fi
+
+    # Add skills mount if specified (read-only)
+    if [[ -n "$skills_path" ]]; then
+        cat >> "$LIMA_CONFIG" << EOF
+  - location: "${skills_path}"
+    mountPoint: "/mnt/skills-custom"
+    writable: false
 EOF
     fi
 
@@ -444,6 +467,9 @@ EOF
     fi
     if [[ -n "$buildlog_data_path" ]]; then
         log_info "  /mnt/buildlog-data   -> $buildlog_data_path (read-write, persistent)"
+    fi
+    if [[ -n "$skills_path" ]]; then
+        log_info "  /mnt/skills-custom   -> $skills_path (read-only)"
     fi
     if [[ "$MEMGRAPH_ENABLED" == "true" ]]; then
         log_info "  Memgraph ports: 7687 (Bolt), 3000 (Lab UI), 7444 (monitoring)"
@@ -596,6 +622,7 @@ EOF
         -e "docker_enabled=${DOCKER_ENABLED}" \
         -e "agent_data_mount=${AGENT_DATA_PATH:+/mnt/openclaw-agents}" \
         -e "buildlog_data_mount=${BUILDLOG_DATA_PATH:+/mnt/buildlog-data}" \
+        -e "skills_mount=${SKILLS_PATH:+/mnt/skills-custom}" \
         -e "memgraph_enabled=${MEMGRAPH_ENABLED}" \
         ${ANSIBLE_EXTRA_VARS[@]+"${ANSIBLE_EXTRA_VARS[@]}"}
 
@@ -654,6 +681,15 @@ verify_mounts() {
             failed=1
         else
             log_info "/mnt/buildlog-data ✓"
+        fi
+    fi
+
+    if [[ -n "$SKILLS_PATH" ]]; then
+        if ! limactl shell "${VM_NAME}" -- test -d /mnt/skills-custom; then
+            log_warn "Mount /mnt/skills-custom not accessible"
+            failed=1
+        else
+            log_info "/mnt/skills-custom ✓"
         fi
     fi
 
@@ -763,6 +799,14 @@ parse_args() {
                     exit 1
                 fi
                 SECRETS_PATH="$2"
+                shift
+                ;;
+            --skills)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--skills requires a path argument"
+                    exit 1
+                fi
+                SKILLS_PATH="$2"
                 shift
                 ;;
             --vault)

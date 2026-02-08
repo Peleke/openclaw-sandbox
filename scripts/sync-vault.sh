@@ -14,7 +14,10 @@
 set -euo pipefail
 
 VM_NAME="openclaw-sandbox"
-TARGET_DIR="/var/lib/openclaw/overlay/obsidian/upper"
+# Write to the merged overlay mount so inotify fires and chokidar picks it up.
+# Writing to the raw upper dir (/var/lib/openclaw/overlay/obsidian/upper)
+# bypasses inotify on the merged mount — cadence would never see the change.
+TARGET_DIR="/workspace-obsidian"
 
 # Resolve vault path: argument > profile > default
 if [[ -n "${1:-}" ]]; then
@@ -68,7 +71,7 @@ SSH_KEY=$(echo "$SSH_CONFIG" | grep -m1 'IdentityFile ' | awk '{print $2}' | tr 
 
 echo "[$(date -Iseconds)] Syncing vault: $VAULT_PATH -> $VM_NAME:$TARGET_DIR"
 
-rsync -a --delete \
+rsync -a --delete --exclude='.obsidian/' \
     -e "ssh -p ${SSH_PORT} -i ${SSH_KEY} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -q" \
     "${VAULT_PATH}/" \
     "${SSH_USER}@${SSH_HOST}:${TARGET_DIR}/"

@@ -235,7 +235,8 @@ class TestSyncVault:
         assert "-a" in args
         assert "--delete" in args
         assert f"{vault_dir}/" in args
-        assert "test@127.0.0.1:/var/lib/openclaw/overlay/obsidian/upper/" in args
+        assert "test@127.0.0.1:/workspace-obsidian/" in args
+        assert "--exclude=.obsidian/" in args
 
     def test_sync_uses_ssh_details(self, vault_profile, vault_dir, ssh):
         with patch("sandbox_cli.orchestrator.subprocess.run") as mock_run:
