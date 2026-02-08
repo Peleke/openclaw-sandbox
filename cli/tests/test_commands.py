@@ -1,5 +1,6 @@
 """Integration tests for Typer subcommands via CliRunner."""
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -127,9 +128,44 @@ class TestDashboardCommand:
 
     def test_dashboard_with_page(self):
         with patch("sandbox_cli.app.run_script", return_value=0) as mock:
-            result = runner.invoke(app, ["dashboard", "green"])
+            result = runner.invoke(app, ["dashboard", "--page", "green"])
         _, kwargs = mock.call_args
         assert kwargs["extra_flags"] == ["green"]
+
+
+class TestDashboardSyncCommand:
+    def test_sync_success(self):
+        cp = subprocess.CompletedProcess([], 0, "synced 5 issues\n", "")
+        with patch("sandbox_cli.app.run_dashboard_sync", return_value=cp):
+            result = runner.invoke(app, ["dashboard", "sync"])
+        assert result.exit_code == 0
+        assert "synced 5 issues" in result.output
+        assert "Dashboard sync complete" in result.output
+
+    def test_sync_dry_run(self):
+        cp = subprocess.CompletedProcess([], 0, "[DRY RUN]\n", "")
+        with patch("sandbox_cli.app.run_dashboard_sync", return_value=cp) as mock:
+            result = runner.invoke(app, ["dashboard", "sync", "--dry-run"])
+        assert result.exit_code == 0
+        mock.assert_called_once()
+        _, kwargs = mock.call_args
+        assert kwargs["dry_run"] is True
+
+    def test_sync_file_not_found(self):
+        with patch(
+            "sandbox_cli.app.run_dashboard_sync",
+            side_effect=FileNotFoundError("Sync script not found"),
+        ):
+            result = runner.invoke(app, ["dashboard", "sync"])
+        assert result.exit_code == 1
+        assert "Sync script not found" in result.output
+
+    def test_sync_nonzero_exit(self):
+        cp = subprocess.CompletedProcess([], 1, "", "gh auth failed\n")
+        with patch("sandbox_cli.app.run_dashboard_sync", return_value=cp):
+            result = runner.invoke(app, ["dashboard", "sync"])
+        assert result.exit_code == 1
+        assert "Sync failed" in result.output
 
 
 class TestHelpOutput:

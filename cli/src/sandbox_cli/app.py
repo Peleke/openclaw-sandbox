@@ -8,6 +8,7 @@ import typer
 from rich.console import Console
 
 from .bootstrap import find_bootstrap_dir, run_script
+from .dashboard import run_dashboard_sync
 from .lima_manager import LimaManager
 from .models import SandboxProfile
 from .orchestrator import orchestrate_up
@@ -139,17 +140,55 @@ def sync(
     raise typer.Exit(rc)
 
 
-@app.command()
-def dashboard(
+# ── dashboard sub-app ────────────────────────────────────────────────────
+
+dashboard_app = typer.Typer(
+    name="dashboard",
+    help="Gateway dashboard and GitHub-to-Obsidian sync.",
+    invoke_without_command=True,
+)
+app.add_typer(dashboard_app)
+
+
+@dashboard_app.callback(invoke_without_command=True)
+def dashboard_open(
+    ctx: typer.Context,
     page: Annotated[
         Optional[str],
-        typer.Argument(help="Dashboard page: control, green, learning"),
+        typer.Option("--page", "-p", help="Dashboard page: control, green, learning"),
     ] = None,
 ) -> None:
     """Open the OpenClaw gateway dashboard."""
+    if ctx.invoked_subcommand is not None:
+        return
     profile = _load_and_validate(strict=False)
     flags = []
     if page:
         flags.append(page)
     rc = run_script(profile, "dashboard.sh", extra_flags=flags)
     raise typer.Exit(rc)
+
+
+@dashboard_app.command("sync")
+def dashboard_sync(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Preview without writing files."),
+    ] = False,
+) -> None:
+    """Sync GitHub issues to Obsidian kanban boards."""
+    profile = _load_and_validate(strict=False)
+    try:
+        result = run_dashboard_sync(profile, dry_run=dry_run)
+    except FileNotFoundError as exc:
+        console.print(f"[red]error:[/red] {exc}")
+        raise typer.Exit(1) from None
+
+    if result.stdout:
+        console.print(result.stdout.rstrip())
+    if result.returncode != 0:
+        if result.stderr:
+            console.print(f"[yellow]{result.stderr.rstrip()}[/yellow]")
+        console.print(f"[red]Sync failed (exit {result.returncode}).[/red]")
+        raise typer.Exit(result.returncode)
+    console.print("[green]Dashboard sync complete.[/green]")
