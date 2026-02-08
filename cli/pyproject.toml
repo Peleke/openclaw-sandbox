@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sandbox-cli"
+version = "0.1.0"
+description = "Typer CLI wrapper for OpenClaw sandbox bootstrap"
+requires-python = ">=3.11"
+dependencies = [
+    "typer>=0.12,<1",
+    "pydantic>=2,<3",
+    "tomli>=2,<3;python_version<'3.11'",
+    "tomli-w>=1,<2",
+    "rich>=13,<14",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+sandbox = "sandbox_cli.app:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sandbox_cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
