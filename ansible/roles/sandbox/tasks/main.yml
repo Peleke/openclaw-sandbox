@@ -280,8 +280,8 @@
               'defaults': (openclaw_config.agents.defaults | default({})) | combine({
                 'sandbox': (openclaw_config.agents.defaults.sandbox | default({})) | combine(
                   dict(
-                    [('networkAllow', _network_allow_merged)] if (_network_allow_merged | length > 0) else []
-                    + [('networkExecAllow', _network_exec_allow_merged)] if (_network_exec_allow_merged | length > 0) else []
+                    ([('networkAllow', _network_allow_merged)] if (_network_allow_merged | length > 0) else [])
+                    + ([('networkExecAllow', _network_exec_allow_merged)] if (_network_exec_allow_merged | length > 0) else [])
                     + [('networkDocker', {'network': sandbox_network_docker_network})]
                   )
                 )
