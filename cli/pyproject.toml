@@ -14,6 +14,7 @@ dependencies = [
     "tomli-w>=1,<2",
     "rich>=13,<14",
     "jinja2>=3.1,<4",
+    "fastmcp>=2,<3",
 ]
 
 [project.optional-dependencies]
@@ -21,6 +22,7 @@ dev = ["pytest>=8,<9", "pyyaml>=6,<7"]
 
 [project.scripts]
 sandbox = "sandbox_cli.app:app"
+sandbox-mcp = "sandbox_cli.mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/sandbox_cli"]
