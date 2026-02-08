@@ -110,7 +110,11 @@ def run_script(
 ) -> int:
     """Run a helper script under scripts/ and return the exit code."""
     bdir = find_bootstrap_dir(profile)
-    script = bdir / "scripts" / script_name
+    scripts_dir = (bdir / "scripts").resolve()
+    script = (scripts_dir / script_name).resolve()
+    if not script.is_relative_to(scripts_dir):
+        print(f"Script path escapes scripts directory: {script_name}", file=sys.stderr)
+        return 1
     if not script.is_file():
         print(f"Script not found: {script}", file=sys.stderr)
         return 1

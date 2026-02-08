@@ -66,3 +66,28 @@ def test_yolo_alone_is_fine():
     r = validate_profile(p)
     # May have warnings (no openclaw, no secrets) but no errors from coherence
     assert not any("mutually exclusive" in e for e in r.errors)
+
+
+def test_export_prefix_in_secrets(tmp_path):
+    """Secrets parser handles 'export KEY=value' .env syntax."""
+    secrets = tmp_path / "secrets.env"
+    secrets.write_text("export ANTHROPIC_API_KEY=sk-test\nexport GH_TOKEN=ghp_test\n")
+    p = SandboxProfile.model_validate({"mounts": {"secrets": str(secrets)}})
+    r = validate_profile(p)
+    assert r.ok
+    assert not any("ANTHROPIC_API_KEY" in e for e in r.errors)
+
+
+def test_mixed_env_formats(tmp_path):
+    """Secrets parser handles mix of plain, export, comments, and blank lines."""
+    secrets = tmp_path / "secrets.env"
+    secrets.write_text(
+        "# API keys\n"
+        "ANTHROPIC_API_KEY=sk-test\n"
+        "\n"
+        "export GH_TOKEN=ghp_test\n"
+        "  OPENAI_API_KEY = sk-openai  \n"
+    )
+    p = SandboxProfile.model_validate({"mounts": {"secrets": str(secrets)}})
+    r = validate_profile(p)
+    assert r.ok

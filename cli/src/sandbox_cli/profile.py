@@ -76,7 +76,12 @@ def init_wizard() -> SandboxProfile:
 
     # --- resources ---
     print("\nVM resources:")
-    cpus = int(_prompt("CPUs", default="4"))
+    cpus_str = _prompt("CPUs", default="4")
+    try:
+        cpus = int(cpus_str)
+    except ValueError:
+        print(f"  Invalid CPU count '{cpus_str}', using default (4)")
+        cpus = 4
     memory = _prompt("Memory", default="8GiB")
     disk = _prompt("Disk", default="50GiB")
 

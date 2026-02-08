@@ -86,6 +86,9 @@ def _check_secrets(profile: SandboxProfile, result: ValidationResult) -> None:
         line = line.strip()
         if not line or line.startswith("#"):
             continue
+        # Strip optional 'export ' prefix common in .env files
+        if line.startswith("export "):
+            line = line[len("export "):]
         key, _, _ = line.partition("=")
         present.add(key.strip())
 
