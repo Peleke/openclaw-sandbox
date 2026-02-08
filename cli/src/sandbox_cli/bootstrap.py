@@ -1,10 +1,17 @@
-"""Argv builder and subprocess delegation to bootstrap.sh / helper scripts."""
+"""Argv builder and subprocess delegation to bootstrap.sh / helper scripts.
+
+The ``run_bootstrap`` and ``exec_bootstrap`` functions are **deprecated** as
+of v0.7.  Use the new Python modules (``orchestrator``, ``lima_manager``, etc.)
+instead.  These wrappers are kept for backward compatibility and will be
+removed in a future release.
+"""
 
 from __future__ import annotations
 
 import os
 import subprocess
 import sys
+import warnings
 from pathlib import Path
 
 from .models import SandboxProfile
@@ -70,7 +77,16 @@ def run_bootstrap(
     *,
     extra_flags: list[str] | None = None,
 ) -> int:
-    """Run bootstrap.sh with the profile's flags and return the exit code."""
+    """Run bootstrap.sh with the profile's flags and return the exit code.
+
+    .. deprecated:: 0.7
+        Use :func:`sandbox_cli.orchestrator.orchestrate_up` instead.
+    """
+    warnings.warn(
+        "run_bootstrap() is deprecated — use orchestrate_up() instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     bdir = find_bootstrap_dir(profile)
     script = str(bdir / "bootstrap.sh")
     argv = [script] + build_argv(profile) + (extra_flags or [])
@@ -89,7 +105,17 @@ def exec_bootstrap(
     *,
     extra_flags: list[str],
 ) -> None:
-    """Replace the current process with bootstrap.sh (for TTY commands)."""
+    """Replace the current process with bootstrap.sh (for TTY commands).
+
+    .. deprecated:: 0.7
+        Use :meth:`sandbox_cli.lima_manager.LimaManager.shell` or
+        :meth:`~LimaManager.shell_exec` instead.
+    """
+    warnings.warn(
+        "exec_bootstrap() is deprecated — use LimaManager.shell() instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     bdir = find_bootstrap_dir(profile)
     script = str(bdir / "bootstrap.sh")
     argv = [script] + extra_flags

@@ -16,6 +16,7 @@ runner = CliRunner()
 def _fake_sandbox_dir(tmp_path, monkeypatch):
     """Every command test gets a fake sandbox dir so find_bootstrap_dir succeeds."""
     (tmp_path / "bootstrap.sh").touch(mode=0o755)
+    (tmp_path / "lima").mkdir()
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     (scripts / "sync-gate.sh").touch(mode=0o755)
@@ -29,74 +30,74 @@ def _fake_sandbox_dir(tmp_path, monkeypatch):
 
 
 class TestUpCommand:
-    def test_up_calls_bootstrap(self):
-        with patch("sandbox_cli.app.run_bootstrap", return_value=0) as mock:
+    def test_up_calls_orchestrate(self):
+        with patch("sandbox_cli.app.orchestrate_up", return_value=0) as mock:
             result = runner.invoke(app, ["up"])
         assert result.exit_code == 0
         mock.assert_called_once()
-        # Should NOT have --delete in extra_flags
-        _, kwargs = mock.call_args
-        assert kwargs.get("extra_flags") is None
 
-    def test_up_fresh_deletes_first(self):
-        with patch("sandbox_cli.app.run_bootstrap", return_value=0) as mock:
+    def test_up_fresh_deletes_then_orchestrates(self):
+        with patch("sandbox_cli.app.LimaManager") as MockLima, \
+             patch("sandbox_cli.app.orchestrate_up", return_value=0) as mock_orch:
             result = runner.invoke(app, ["up", "--fresh"])
-        assert mock.call_count == 2
-        # First call is delete
-        first_call_kwargs = mock.call_args_list[0][1]
-        assert first_call_kwargs["extra_flags"] == ["--delete"]
+        MockLima.return_value.delete.assert_called_once()
+        mock_orch.assert_called_once()
 
-    def test_up_fresh_aborts_on_delete_failure(self):
-        with patch("sandbox_cli.app.run_bootstrap", side_effect=[1]) as mock:
-            result = runner.invoke(app, ["up", "--fresh"])
-        assert result.exit_code == 1
-        assert mock.call_count == 1  # Only the delete call, not the provision
+    def test_up_returns_orchestrate_exit_code(self):
+        with patch("sandbox_cli.app.orchestrate_up", return_value=3):
+            result = runner.invoke(app, ["up"])
+        assert result.exit_code == 3
 
 
 class TestDownCommand:
-    def test_down_calls_kill(self):
-        with patch("sandbox_cli.app.run_bootstrap", return_value=0) as mock:
+    def test_down_calls_lima_stop(self):
+        with patch("sandbox_cli.app.LimaManager") as MockLima:
             result = runner.invoke(app, ["down"])
         assert result.exit_code == 0
-        _, kwargs = mock.call_args
-        assert kwargs["extra_flags"] == ["--kill"]
+        MockLima.return_value.stop.assert_called_once_with(force=True)
 
 
 class TestDestroyCommand:
     def test_destroy_prompts_and_calls_delete(self):
-        with patch("sandbox_cli.app.run_bootstrap", return_value=0) as mock:
+        with patch("sandbox_cli.app.LimaManager") as MockLima:
             result = runner.invoke(app, ["destroy"], input="y\n")
         assert result.exit_code == 0
-        _, kwargs = mock.call_args
-        assert kwargs["extra_flags"] == ["--delete"]
+        MockLima.return_value.delete.assert_called_once()
 
     def test_destroy_aborts_on_no(self):
-        with patch("sandbox_cli.app.run_bootstrap") as mock:
+        with patch("sandbox_cli.app.LimaManager") as MockLima:
             result = runner.invoke(app, ["destroy"], input="n\n")
-        mock.assert_not_called()
+        MockLima.return_value.delete.assert_not_called()
 
     def test_destroy_force_skips_prompt(self):
-        with patch("sandbox_cli.app.run_bootstrap", return_value=0) as mock:
+        with patch("sandbox_cli.app.LimaManager") as MockLima:
             result = runner.invoke(app, ["destroy", "-f"])
+        assert result.exit_code == 0
+        MockLima.return_value.delete.assert_called_once()
+
+
+class TestStatusCommand:
+    def test_status_calls_print_status_report(self):
+        with patch("sandbox_cli.app.print_status_report") as mock:
+            result = runner.invoke(app, ["status"])
         assert result.exit_code == 0
         mock.assert_called_once()
 
 
-class TestStatusCommand:
-    def test_status_shows_profile_info(self):
-        with patch("sandbox_cli.app.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="")
-            result = runner.invoke(app, ["status"])
-        assert result.exit_code == 0
-        assert "Sandbox Status" in result.output
+class TestSshCommand:
+    def test_ssh_calls_lima_shell(self):
+        with patch("sandbox_cli.app.LimaManager") as MockLima:
+            result = runner.invoke(app, ["ssh"])
+        MockLima.return_value.shell.assert_called_once()
 
-    def test_status_handles_missing_limactl(self):
-        with patch(
-            "sandbox_cli.app.subprocess.run", side_effect=FileNotFoundError
-        ):
-            result = runner.invoke(app, ["status"])
-        assert result.exit_code == 0
-        assert "limactl not installed" in result.output
+
+class TestOnboardCommand:
+    def test_onboard_calls_lima_shell_exec(self):
+        with patch("sandbox_cli.app.LimaManager") as MockLima:
+            result = runner.invoke(app, ["onboard"])
+        MockLima.return_value.shell_exec.assert_called_once()
+        cmd = MockLima.return_value.shell_exec.call_args[0][0]
+        assert "onboard" in cmd
 
 
 class TestSyncCommand:

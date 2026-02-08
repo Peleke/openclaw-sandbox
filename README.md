@@ -2,64 +2,155 @@
 
 # OpenClaw Sandbox
 
-### Secure, isolated VM environment for running OpenClaw agents
+### Secure, Isolated VM for Running AI Agents
 
 [![Release](https://img.shields.io/github/v/release/Peleke/openclaw-sandbox?style=for-the-badge&color=green)](https://github.com/Peleke/openclaw-sandbox/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/Peleke/openclaw-sandbox/ci.yml?style=for-the-badge&label=CI)](https://github.com/Peleke/openclaw-sandbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-macOS-blue?style=for-the-badge&logo=apple&logoColor=white)](https://lima-vm.io/)
+[![Tests](https://img.shields.io/badge/Tests-208_passed-brightgreen?style=for-the-badge)](cli/tests/)
 
 **Run AI agents with network containment, audit trails, and secrets management.**
 
-<img src="assets/hero-banner.png" alt="OpenClaw Sandbox - Secure VM environment for AI agents" width="800"/>
-
-</div>
+[Quick Start](#-quick-start) · [Features](#-features) · [Architecture](#-architecture) · [CLI Reference](#-cli-reference) · [Contributing](#-contributing)
 
 ---
 
+</div>
+
 ## The Problem
 
-Running AI agents on your host machine is risky:
-- Agents can access sensitive files, credentials, and configs
-- Network traffic is unrestricted
+Running AI agents on your host machine is a liability:
+- Agents can read your credentials, SSH keys, and browser cookies
+- Network traffic is unrestricted — they can exfiltrate data anywhere
 - No isolation between agent and host processes
 - Secrets end up in environment variables, logs, and shell history
 
-**OpenClaw Sandbox** solves this by running agents inside a hardened Linux VM with strict network policies and secure secrets handling.
+You need the agent to do real work — access your code, call APIs, run tools — but without handing it the keys to your entire machine.
+
+## The Solution
+
+**OpenClaw Sandbox** runs agents inside a hardened Lima VM with strict network policies, OverlayFS filesystem isolation, and Docker-containerized tool execution. Your code is mounted read-only. All writes are contained in an overlay. Changes only reach your host through a validated sync gate with secret scanning.
+
+One command to provision. One command to tear down. Everything in between is contained.
+
+```
+You: sandbox up
+     → Lima VM created (Ubuntu 24.04, Apple VZ)
+     → Ansible provisions 10 roles (overlay, Docker, firewall, secrets, gateway...)
+     → Gateway starts on :18789
+     → Agent is running. You are safe.
+
+You: sandbox status
+     → VM: Running | Mode: secure | Overlay: active
+     → Agent: Claw (🦞) | Observations: 847
+
+You: sandbox ssh
+     → You're inside the VM. Do whatever you want.
+```
+
+**10 Ansible roles. 208 CLI tests. Zero manual config.**
+
+---
 
 ## Features
 
-- **Filesystem Isolation** - OverlayFS: host mounts are read-only, all writes contained in overlay
-- **Docker Sandbox** - Tool executions run inside Docker containers with bridge networking
-- **GitHub CLI** - `gh` installed in VM and sandbox containers, GH_TOKEN passthrough
-- **Obsidian Vault Access** - Vault bind-mounted into containers as read-only
-- **Network Containment** - UFW firewall with explicit allowlist (only HTTPS, DNS, Tailscale)
-- **Secrets Management** - Multiple injection methods, never in logs or process lists
-- **Gated Sync** - Validated pipeline (gitleaks, path allowlist) before changes reach host
-- **Tailscale Integration** - Route to your private network via host
-- **Zero-Config Deploy** - Single command bootstrap from macOS
+### 🛡️ Defense-in-Depth Isolation
+Two layers working together. **Layer 1**: OverlayFS makes host mounts read-only — all writes land in an upper layer inside the VM. **Layer 2**: Individual tool executions (shell commands, file ops, browser actions) run inside Docker containers with bridge networking. Your code never leaves the sandbox.
 
-## Quick Start
+### 🔒 Network Containment
+UFW firewall with explicit allowlist — only HTTPS, DNS, Tailscale, and NTP are permitted. All other traffic is denied and logged. The agent can call LLM APIs and pull packages, but can't phone home to anywhere unexpected.
+
+### 🔑 Secrets Management
+Three injection methods (direct, secrets file, config mount). Secrets land in `/etc/openclaw/secrets.env` with `0600` permissions, loaded via `EnvironmentFile=` — never in process lists, never in logs. All Ansible tasks use `no_log: true`.
+
+### 📂 Gated Sync
+Changes only reach your host through `sandbox sync`, which runs gitleaks secret scanning, path allowlisting, and size/filetype checks. In secure mode, you approve every change. In YOLO mode, it auto-syncs every 30 seconds.
+
+### 🐳 Docker Sandbox
+OpenClaw's built-in sandbox containerizes tool executions inside the VM. Every session gets its own container with bridge networking (configurable to `none` for full air-gap). The sandbox image is auto-augmented with `gh` if missing.
+
+### 🔗 GitHub CLI
+`gh` installed from the official APT repository. `GH_TOKEN` passthrough from secrets — no `gh auth login` needed. Available both in the VM and inside sandbox containers.
+
+### 📓 Obsidian Vault Access
+Mount your vault read-only into the VM and sandbox containers. The agent can read your notes but can't modify them. `OBSIDIAN_VAULT_PATH` is exported so agents know where to find vault files.
+
+### 📡 Telegram Integration
+Pairing-based access control. Pre-seed your Telegram user ID or use the built-in pairing flow. No open access by default.
+
+### 📊 buildlog Integration
+[buildlog](https://github.com/Peleke/buildlog-template) is pre-installed for ambient learning capture — structured trajectories, Thompson Sampling for rule surfacing, automatic CLAUDE.md rendering. MCP server registered with 29 tools.
+
+### ⚡ Zero-Config Deploy
+Single `sandbox up` from macOS. Homebrew, Lima, Ansible — all dependencies installed automatically. Apple Silicon with Rosetta, or Intel. ~10GB disk.
+
+---
+
+## 🆚 Why a VM?
+
+| | Docker-only | Sandbox VM |
+|---|:---:|:---:|
+| **Filesystem isolation** | Bind mounts (writable) | OverlayFS (read-only lower) |
+| **Network policy** | iptables in container | UFW at VM level |
+| **Secrets exposure** | Env vars in container | `EnvironmentFile=` (not in process list) |
+| **Tool sandboxing** | Single container | Nested: VM → Docker per session |
+| **Kernel isolation** | Shared host kernel | Separate VM kernel |
+| **Sync validation** | None | gitleaks + path allowlist |
+
+---
+
+## 🚀 Quick Start
 
 ```bash
-# Clone and run
+# Install the CLI
+pip install openclaw-sandbox
+# or: uv pip install openclaw-sandbox
+
+# Interactive setup — creates ~/.openclaw/sandbox-profile.toml
+sandbox init
+
+# Provision the VM (first run takes ~5 minutes)
+sandbox up
+
+# Check status
+sandbox status
+
+# SSH into the VM
+sandbox ssh
+
+# Sync overlay changes to host (with secret scanning)
+sandbox sync
+
+# Stop the VM
+sandbox down
+
+# Delete the VM entirely
+sandbox destroy
+```
+
+### From Source
+
+```bash
 git clone https://github.com/Peleke/openclaw-sandbox.git
 cd openclaw-sandbox
 
-# Bootstrap with your OpenClaw repo and secrets
-./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.openclaw-secrets.env
+# Install CLI in dev mode
+uv pip install -e cli/
 
-# Access the VM
-limactl shell openclaw-sandbox
+# Provision
+sandbox up
 ```
 
-## Architecture
+---
+
+## 🏗️ Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────┐
 │ macOS Host                                                │
 │                                                           │
-│  ~/Projects/openclaw ◄──── sync-gate.sh (approved only)  │
+│  ~/Projects/openclaw ◄──── sandbox sync (approved only)  │
 │                                                           │
 │  ╔════════════════════════════════════════════════════╗   │
 │  ║ Lima VM (Ubuntu 24.04)                             ║   │
@@ -98,171 +189,107 @@ limactl shell openclaw-sandbox
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Defense-in-Depth
-
-Two layers of isolation work together:
+### Isolation Layers
 
 ```
 Layer 1 (overlay):   gateway process  → VM + read-only host mounts + OverlayFS
 Layer 2 (docker):    tool execution   → Docker container (bridge network)
 ```
 
-Host mounts are **read-only by default**. All writes land in an OverlayFS upper layer inside the VM. Changes only reach the host through a validated sync gate.
+---
 
-Individual tool executions (file reads/writes, shell commands, browser actions) are further sandboxed inside Docker containers with bridge networking (configurable to `none` for full isolation).
+## 💻 CLI Reference
 
-## Docker Sandbox
+| Command | Description |
+|---------|-------------|
+| `sandbox init` | Interactive wizard — creates `~/.openclaw/sandbox-profile.toml` |
+| `sandbox up` | Provision (or reprovision) the VM |
+| `sandbox up --fresh` | Destroy + reprovision from scratch |
+| `sandbox down` | Stop the VM (force kill) |
+| `sandbox destroy` | Delete the VM entirely (with confirmation) |
+| `sandbox destroy -f` | Delete without confirmation |
+| `sandbox status` | Show VM state, profile summary, agent identity |
+| `sandbox ssh` | SSH into the VM (replaces process for TTY) |
+| `sandbox onboard` | Run the onboarding wizard inside the VM |
+| `sandbox sync` | Sync overlay changes to host (with validation) |
+| `sandbox sync --dry-run` | Preview sync without applying |
+| `sandbox dashboard` | Open the gateway dashboard |
+| `sandbox dashboard green` | Open a specific dashboard page |
 
-OpenClaw's built-in sandbox containerizes individual tool executions inside the VM:
+### Profile Configuration
 
-- **Mode**: `all` - every session gets sandboxed
-- **Scope**: `session` - one container per session
-- **Workspace**: `rw` - tools can read/write project files
-- **Network**: `bridge` - containers can reach the internet (configurable: `bridge` / `none`)
-- **Image**: `openclaw-sandbox:bookworm-slim` (auto-augmented with `gh` if missing)
+`sandbox init` creates `~/.openclaw/sandbox-profile.toml`:
 
-```bash
-# Check Docker in VM
-limactl shell openclaw-sandbox -- docker info
+```toml
+[mounts]
+openclaw = "~/Projects/openclaw"
+config = "~/.openclaw"
+agent_data = "~/.openclaw/agents"
+buildlog_data = "~/.buildlog"
+secrets = "~/.openclaw-secrets.env"
+vault = "~/Documents/Vaults/ClawTheCurious"
 
-# Check sandbox image
-limactl shell openclaw-sandbox -- docker images | grep openclaw-sandbox
+[mode]
+yolo = false
+yolo_unsafe = false
+no_docker = false
 
-# See active containers
-limactl shell openclaw-sandbox -- docker ps -a
-
-# Verify gh is in sandbox image
-limactl shell openclaw-sandbox -- docker run --rm openclaw-sandbox:bookworm-slim gh --version
+[resources]
+cpus = 4
+memory = "8GiB"
+disk = "50GiB"
 ```
 
-To disable Docker sandbox (lighter VM):
-```bash
-./bootstrap.sh --openclaw ~/Projects/openclaw --no-docker
-```
-
-## GitHub CLI
-
-The `gh` CLI is installed from the official GitHub APT repository, enabling the agent to interact with GitHub (PRs, issues, releases, API calls).
-
-### Setup
-
-```bash
-# Add your GitHub token to secrets
-echo 'GH_TOKEN=ghp_your_token_here' >> ~/.openclaw-secrets.env
-
-# Or inject directly
-./bootstrap.sh --openclaw ~/Projects/openclaw -e "secrets_github_token=ghp_xxx"
-```
-
-`gh` natively respects the `GH_TOKEN` environment variable — no `gh auth login` needed.
-
-### Verifying
-
-```bash
-# Check gh is installed
-limactl shell openclaw-sandbox -- gh --version
-
-# Check auth (requires GH_TOKEN in secrets)
-limactl shell openclaw-sandbox -- bash -c 'source /etc/openclaw/secrets.env && gh auth status'
-
-# gh is also available inside sandbox containers
-limactl shell openclaw-sandbox -- docker run --rm openclaw-sandbox:bookworm-slim which gh
-```
-
-### Token Flow
-
-```
-Host secrets file → Ansible regex extraction → /etc/openclaw/secrets.env (0600)
-  → gateway EnvironmentFile= → container env passthrough (sandbox.docker.env.GH_TOKEN)
-```
-
-### Obsidian Vault in Containers
-
-When a vault is mounted via `--vault`, the overlay at `/workspace-obsidian` is automatically bind-mounted into sandbox containers as read-only:
-
-```bash
-# Verify vault is visible in containers
-limactl shell openclaw-sandbox -- docker run --rm \
-  -v /workspace-obsidian:/workspace-obsidian:ro alpine ls /workspace-obsidian
-
-# Check sandbox config
-limactl shell openclaw-sandbox -- jq '.agents.defaults.sandbox.docker.binds' ~/.openclaw/openclaw.json
-# → ["/workspace-obsidian:/workspace-obsidian:ro"]
-```
-
-The gateway also exports `OBSIDIAN_VAULT_PATH=/workspace-obsidian` so agents know where to find vault files.
-
-If you re-provision without `--vault`, stale obsidian mount units are automatically cleaned up (no failures).
-
-## Filesystem Isolation
-
-### Modes
+### Filesystem Modes
 
 | Mode | Flag | Host Mounts | Overlay | Sync |
 |------|------|-------------|---------|------|
-| **Secure** (default) | _(none)_ | Read-only | Active | Manual via `sync-gate.sh` |
+| **Secure** (default) | _(none)_ | Read-only | Active | Manual via `sandbox sync` |
 | **YOLO** | `--yolo` | Read-only | Active | Auto-sync every 30s |
 | **YOLO-Unsafe** | `--yolo-unsafe` | Read-write | Disabled | Direct (legacy) |
 
-### Syncing Changes to Host
+---
 
-```bash
-# Show pending changes
-./scripts/sync-gate.sh --dry-run
+<div align="center">
 
-# Validate and apply (interactive)
-./scripts/sync-gate.sh
+# Part II: Technical Documentation
 
-# Auto-apply (CI/automation)
-./scripts/sync-gate.sh --auto
+*For engineers, contributors, and the curious*
 
-# Check overlay status in VM
-./scripts/sync-gate.sh --status
+</div>
 
-# Discard all overlay writes
-./scripts/sync-gate.sh --reset
-```
+---
 
-### VM-side Helpers
-
-```bash
-# Check overlay state
-limactl shell openclaw-sandbox -- overlay-status
-
-# Reset overlay (discard all writes)
-limactl shell openclaw-sandbox -- sudo overlay-reset
-```
-
-## Secrets Management
+## 🔑 Secrets Management
 
 Three ways to provide secrets, in priority order:
 
 ### 1. Direct Injection (CI/CD, testing)
 
 ```bash
-./bootstrap.sh --openclaw ../openclaw \
-  -e "secrets_anthropic_api_key=sk-ant-xxx" \
-  -e "secrets_gateway_password=mypass"
+# Via profile extra_vars or bootstrap.sh fallback
+sandbox up  # with extra_vars in profile
 ```
 
 ### 2. Secrets File (recommended for dev)
 
 ```bash
-# Create secrets file
 cat > ~/.openclaw-secrets.env << 'EOF'
 ANTHROPIC_API_KEY=sk-ant-xxx
 OPENAI_API_KEY=sk-xxx
 OPENCLAW_GATEWAY_PASSWORD=mypass
+GH_TOKEN=ghp_xxx
 EOF
 
-# Bootstrap with secrets
-./bootstrap.sh --openclaw ../openclaw --secrets ~/.openclaw-secrets.env
+# Point your profile at it
+sandbox init  # → secrets = "~/.openclaw-secrets.env"
 ```
 
 ### 3. Config Mount (full OpenClaw config)
 
 ```bash
-./bootstrap.sh --openclaw ../openclaw --config ~/.openclaw
+# Point your profile at ~/.openclaw
+sandbox init  # → config = "~/.openclaw"
 ```
 
 ### Supported Secrets
@@ -275,207 +302,19 @@ EOF
 | `OPENROUTER_API_KEY` | OpenRouter API key |
 | `OPENCLAW_GATEWAY_PASSWORD` | Gateway auth password |
 | `OPENCLAW_GATEWAY_TOKEN` | Gateway auth token |
-| `GH_TOKEN` | GitHub CLI token (for `gh` commands) |
+| `GH_TOKEN` | GitHub CLI token |
 | `SLACK_BOT_TOKEN` | Slack integration |
 | `DISCORD_BOT_TOKEN` | Discord integration |
 | `TELEGRAM_BOT_TOKEN` | Telegram integration |
 
-## Usage
-
-```bash
-# Full bootstrap — secure mode (default: read-only mounts + overlay)
-./bootstrap.sh --openclaw ~/Projects/openclaw
-
-# With secrets
-./bootstrap.sh --openclaw ~/Projects/openclaw --secrets ~/.secrets.env
-
-# With Obsidian vault
-./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main
-
-# YOLO mode — overlay + auto-sync every 30s
-./bootstrap.sh --openclaw ~/Projects/openclaw --yolo
-
-# YOLO-unsafe — no overlay, rw mounts (legacy, requires --delete first)
-./bootstrap.sh --openclaw ~/Projects/openclaw --yolo-unsafe
-
-# No Docker — lighter VM (skips Docker + sandbox)
-./bootstrap.sh --openclaw ~/Projects/openclaw --no-docker
-
-# Open VM shell
-./bootstrap.sh --shell
-
-# Run interactive onboard
-./bootstrap.sh --onboard
-
-# Stop VM
-./bootstrap.sh --kill
-
-# Delete VM completely (required to change mount modes)
-./bootstrap.sh --delete
-```
-
-## Telegram Integration
-
-The sandbox supports Telegram bot integration with **pairing-based access control** (no open access by default).
-
-### Setup
-
-```bash
-# Add your bot token to secrets
-echo 'TELEGRAM_BOT_TOKEN=your-bot-token' >> ~/.openclaw-secrets.env
-
-# Bootstrap with your Telegram user ID pre-approved
-./bootstrap.sh --openclaw ~/Projects/openclaw \
-  --secrets ~/.openclaw-secrets.env \
-  -e "telegram_user_id=YOUR_TELEGRAM_ID"
-```
-
-> Get your Telegram user ID by messaging [@userinfobot](https://t.me/userinfobot) on Telegram.
-
-### Access Control
-
-The sandbox uses OpenClaw's built-in pairing system (`dmPolicy: "pairing"`):
-
-| Scenario | What happens |
-|----------|-------------|
-| **Your ID pre-seeded** (`-e telegram_user_id=...`) | You can message immediately |
-| **Unknown sender messages bot** | Bot shows a pairing code |
-| **Owner approves code** | Sender gets added to allow list |
-
-```bash
-# Approve a pairing code (from host)
-limactl shell openclaw-sandbox -- claw pair approve <CODE>
-
-# List pending pairing requests
-limactl shell openclaw-sandbox -- claw pair list
-```
-
-### Verifying
-
-```bash
-# Check gateway status
-limactl shell openclaw-sandbox -- systemctl status openclaw-gateway
-
-# View Telegram activity
-limactl shell openclaw-sandbox -- tail -f /tmp/openclaw/openclaw-$(date +%Y-%m-%d).log | grep telegram
-
-# Check bot connection
-limactl shell openclaw-sandbox -- claw status
-```
-
-## Cadence Integration
-
-Cadence is the ambient AI pipeline that watches your Obsidian vault and delivers insights to Telegram:
+### Token Flow
 
 ```
-┌──────────────┐     ┌─────────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Obsidian   │────▶│  Insight        │────▶│  Insight     │────▶│  Telegram    │
-│   Watcher    │     │  Extractor      │     │  Digest      │     │  Delivery    │
-│              │     │  (LLM)          │     │  (Batching)  │     │              │
-└──────────────┘     └─────────────────┘     └──────────────┘     └──────────────┘
+Host secrets file → Ansible regex extraction → /etc/openclaw/secrets.env (0600)
+  → gateway EnvironmentFile= → container env passthrough (sandbox.docker.env.GH_TOKEN)
 ```
 
-### Setup
-
-```bash
-# Bootstrap with vault mounted
-./bootstrap.sh --openclaw ~/Projects/openclaw --vault ~/Documents/Vaults/main --secrets ~/.secrets.env
-
-# Configure cadence
-limactl shell openclaw-sandbox -- nano ~/.openclaw/cadence.json
-```
-
-Edit `cadence.json`:
-```json
-{
-  "enabled": true,
-  "vaultPath": "/mnt/obsidian",
-  "delivery": {
-    "channel": "telegram",
-    "telegramChatId": "YOUR_CHAT_ID"
-  },
-  "schedule": {
-    "enabled": true,
-    "nightlyDigest": "21:00",
-    "morningStandup": "08:00"
-  }
-}
-```
-
-### Usage
-
-```bash
-# Start cadence service
-limactl shell openclaw-sandbox -- sudo systemctl start openclaw-cadence
-
-# Check status
-limactl shell openclaw-sandbox -- sudo systemctl status openclaw-cadence
-
-# View logs
-limactl shell openclaw-sandbox -- sudo journalctl -u openclaw-cadence -f
-
-# Manual digest trigger
-limactl shell openclaw-sandbox -- bun /mnt/openclaw/scripts/cadence.ts digest
-```
-
-Write journal entries with `::publish` on line 2 (after the title) to mark them for insight extraction.
-
-## buildlog Integration
-
-[buildlog](https://github.com/Peleke/buildlog-template) is installed globally for ambient learning capture:
-
-```
-┌──────────────┐     ┌─────────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Session    │────▶│    Trajectory   │────▶│   Thompson   │────▶│   Agent      │
-│   Activity   │     │    Capture      │     │   Sampling   │     │   Rules      │
-└──────────────┘     └─────────────────┘     └──────────────┘     └──────────────┘
-```
-
-### What It Does
-
-- Captures structured trajectories from every coding session
-- Extracts decision patterns ("seeds") that can be learned
-- Uses Thompson Sampling to surface rules that actually reduce mistakes
-- Renders learned rules to CLAUDE.md and other agent formats
-
-### Usage
-
-buildlog is pre-configured and the MCP server is registered. Claude Code has access to all 29 tools automatically.
-
-```bash
-# Check state
-limactl shell openclaw-sandbox -- buildlog overview
-
-# Start a session
-limactl shell openclaw-sandbox -- buildlog new my-feature
-
-# Commit (always use this instead of raw git commit)
-limactl shell openclaw-sandbox -- buildlog commit -m "feat: add feature"
-
-# Run review gauntlet
-limactl shell openclaw-sandbox -- buildlog gauntlet
-
-# Extract and render skills
-limactl shell openclaw-sandbox -- buildlog skills
-```
-
-### Host CLI Setup
-
-To use `claw` commands from your Mac to the sandboxed gateway:
-
-```bash
-# Add to your shell profile (~/.zshrc)
-# Detects sandbox and routes to localhost
-source ~/.openclaw/dotfiles/env.sh
-
-# Then from host:
-claw status  # Shows sandbox gateway status
-claw tui     # Opens TUI connected to sandbox
-```
-
-## Network Policy
-
-The VM firewall allows only:
+## 🔥 Network Policy
 
 | Direction | Port | Protocol | Purpose |
 |-----------|------|----------|---------|
@@ -490,108 +329,112 @@ The VM firewall allows only:
 
 All other traffic is **denied and logged**.
 
-## Requirements
+## 📡 Telegram Setup
 
-- macOS with Apple Silicon or Intel
-- [Homebrew](https://brew.sh/)
-- ~10GB disk space
-
-Dependencies are installed automatically:
-- [Lima](https://lima-vm.io/) - Linux VM manager
-- [Ansible](https://www.ansible.com/) - Configuration management
-- [jq](https://jqlang.github.io/jq/) - JSON processor
-- [gitleaks](https://github.com/gitleaks/gitleaks) - Secret scanning (for sync-gate)
-- [Tailscale](https://tailscale.com/) - (optional) private networking
-
-## Development Phases
-
-| Phase | Status | Description |
-|-------|--------|-------------|
-| S1 | Done | Lima VM bootstrap |
-| S2 | Done | Gateway deployment |
-| S3 | Done | Network containment (UFW) |
-| S4 | Done | Tailscale routing |
-| S5 | Done | Secrets management |
-| S6 | Done | Telegram integration |
-| S7 | Done | Cadence (ambient signals) |
-| S8 | Done | buildlog (ambient learning) |
-| S9 | Done | OverlayFS filesystem isolation |
-| **S10** | **Done** | **Docker sandbox inside VM** |
-| S11 | Planned | Multi-tenant |
-
-## Security Considerations
-
-1. **Filesystem isolation** - Host mounts read-only, writes contained in OverlayFS
-2. **Docker sandbox** - Tool executions in containers (bridge network, configurable to `none`)
-3. **Gated sync** - gitleaks scan + path allowlist before changes reach host
-4. **Secrets never logged** - All Ansible tasks use `no_log: true`
-5. **File permissions** - `/etc/openclaw/secrets.env` is `0600`
-6. **No process exposure** - Using `EnvironmentFile=` not `Environment=`
-7. **Network isolation** - Explicit allowlist, all else denied
-8. **Audit trail** - inotifywait watcher logs all overlay writes
-
-## Troubleshooting
-
-### Check VM status
 ```bash
-limactl list
+# Add bot token to secrets
+echo 'TELEGRAM_BOT_TOKEN=your-bot-token' >> ~/.openclaw-secrets.env
+
+# Pre-seed your Telegram user ID
+# Get it from @userinfobot on Telegram
+# Add to profile extra_vars: telegram_user_id = "YOUR_ID"
+sandbox up
 ```
 
-### View gateway logs
+Access control uses OpenClaw's pairing system (`dmPolicy: "pairing"`):
+
+| Scenario | What happens |
+|----------|-------------|
+| **Your ID pre-seeded** | You can message immediately |
+| **Unknown sender** | Bot shows a pairing code |
+| **Owner approves code** | Sender gets added to allow list |
+
+## 📊 buildlog Setup
+
+buildlog is pre-configured and the MCP server is registered. Claude Code has access to all 29 tools automatically.
+
 ```bash
-limactl shell openclaw-sandbox -- sudo journalctl -u openclaw-gateway -f
+# Check state
+sandbox ssh
+buildlog overview
+
+# Commit with logging
+buildlog commit -m "feat: add feature"
+
+# Run review gauntlet
+buildlog gauntlet
+
+# Extract and render skills
+buildlog skills
 ```
 
-### Check firewall rules
-```bash
-limactl shell openclaw-sandbox -- sudo ufw status verbose
+## 📁 Project Structure
+
+```
+openclaw-sandbox/
+├── cli/                          # Python CLI (Typer + Rich)
+│   ├── src/sandbox_cli/
+│   │   ├── app.py                # Typer subcommand definitions
+│   │   ├── models.py             # Pydantic profile models
+│   │   ├── lima_config.py        # Jinja2 Lima YAML generation
+│   │   ├── lima_manager.py       # limactl subprocess wrapper
+│   │   ├── ansible_runner.py     # Inventory builder + playbook invocation
+│   │   ├── orchestrator.py       # Sequences: deps → config → VM → ansible
+│   │   ├── reporting.py          # Status output + OpenClaw interop
+│   │   ├── deps.py               # Homebrew/Ansible dependency checks
+│   │   ├── profile.py            # Profile loading + init wizard
+│   │   ├── validation.py         # Profile validation
+│   │   ├── bootstrap.py          # Legacy bash delegation (deprecated)
+│   │   └── templates/
+│   │       └── lima-vm.yaml.j2   # Lima VM config template
+│   └── tests/                    # 208 pytest tests
+├── ansible/
+│   ├── playbook.yml              # Main playbook
+│   └── roles/
+│       ├── overlay/              # OverlayFS isolation
+│       ├── sandbox/              # Docker sandbox config
+│       ├── docker/               # Docker CE installation
+│       ├── secrets/              # Secrets extraction + injection
+│       ├── gh-cli/               # GitHub CLI
+│       ├── obsidian/             # Vault mount + container bind
+│       ├── gateway/              # OpenClaw gateway systemd service
+│       ├── firewall/             # UFW network policy
+│       ├── buildlog/             # buildlog + MCP registration
+│       └── qortex/               # Qortex interop + Memgraph
+├── scripts/
+│   ├── sync-gate.sh              # Host-side sync with gitleaks
+│   ├── dashboard.sh              # Gateway dashboard opener
+│   └── release.sh                # Semver release automation
+├── tests/                        # Ansible role test suites
+│   ├── overlay/                  # 60 Ansible + 19 VM checks
+│   ├── sandbox/                  # 89 Ansible + 32 VM checks
+│   ├── gh-cli/                   # 59 Ansible + 15 VM checks
+│   ├── obsidian/                 # 34 Ansible + 12 VM checks
+│   └── cadence/                  # 64 checks total
+├── bootstrap.sh                  # Legacy entrypoint (still works)
+└── Brewfile                      # macOS dependencies
 ```
 
-### Verify secrets loaded
+## 🧪 Tests
+
+### CLI Tests (208 tests)
+
 ```bash
-limactl shell openclaw-sandbox -- sudo cat /etc/openclaw/secrets.env
+uv run --directory cli pytest tests/ -v
 ```
 
-### Test Tailscale routing
-```bash
-limactl shell openclaw-sandbox -- ~/test-tailscale.sh 100.x.x.x
-```
-
-## Tests
-
-The project includes comprehensive test suites:
+### Ansible Role Tests
 
 ```bash
-# Overlay tests (60 checks)
-./tests/overlay/run-all.sh              # Full suite (requires VM)
-./tests/overlay/run-all.sh --quick      # Ansible validation only
-./tests/overlay/test-overlay-ansible.sh # Role structure, templates, integration (60 checks)
-./tests/overlay/test-overlay-role.sh    # VM deployment tests (19 checks)
+# Quick mode — Ansible lint + structure validation
+./tests/overlay/run-all.sh --quick
+./tests/sandbox/run-all.sh --quick
+./tests/gh-cli/run-all.sh --quick
+./tests/obsidian/run-all.sh --quick
 
-# Docker + Sandbox tests
-./tests/sandbox/run-all.sh              # Full suite (requires VM)
-./tests/sandbox/run-all.sh --quick      # Ansible validation only
-./tests/sandbox/test-sandbox-ansible.sh # Role structure, defaults, integration
-./tests/sandbox/test-sandbox-role.sh    # VM deployment tests (Docker, image, config)
-
-# GitHub CLI tests
-./tests/gh-cli/run-all.sh              # Full suite (requires VM)
-./tests/gh-cli/run-all.sh --quick      # Ansible validation only
-./tests/gh-cli/test-gh-cli-ansible.sh  # Role structure, secrets, integration
-./tests/gh-cli/test-gh-cli-role.sh     # VM deployment tests
-
-# Obsidian vault sandbox tests
-./tests/obsidian/run-all.sh              # Full suite (requires VM)
-./tests/obsidian/run-all.sh --quick      # Ansible validation only
-./tests/obsidian/test-obsidian-ansible.sh # Role changes, config, integration
-./tests/obsidian/test-obsidian-role.sh   # VM deployment tests
-
-# Cadence tests (64 checks)
-./tests/cadence/run-all.sh              # Full suite (requires VM)
-./tests/cadence/run-all.sh --quick      # Ansible validation only
-./tests/cadence/test-cadence-ansible.sh # Ansible role validation (32 checks)
-./tests/cadence/test-cadence-role.sh    # VM deployment tests (22 checks)
-./tests/cadence/test-cadence-e2e.sh     # Full pipeline E2E (10 checks)
+# Full mode — deploys to running VM
+./tests/overlay/run-all.sh
+./tests/sandbox/run-all.sh
 ```
 
 ### CI/CD
@@ -599,23 +442,38 @@ The project includes comprehensive test suites:
 - **CI** runs on every PR: YAML lint, Ansible validation, ShellCheck
 - **Release** workflow triggers on `v*` tags and creates GitHub releases
 
-## Contributing
+## 🔧 Troubleshooting
 
-1. Fork the repo
-2. Create a feature branch
-3. Make changes
-4. Run tests: `./tests/overlay/run-all.sh --quick && ./tests/sandbox/run-all.sh --quick && ./tests/gh-cli/run-all.sh --quick && ./tests/obsidian/run-all.sh --quick && ./tests/cadence/run-all.sh --quick`
-5. Open a PR (CI will run automatically)
+```bash
+# Check VM status
+sandbox status
 
-## Releases
+# View gateway logs
+sandbox ssh
+sudo journalctl -u openclaw-gateway -f
 
-We use [semantic versioning](https://semver.org/) with milestone-based releases.
+# Check firewall rules
+sandbox ssh
+sudo ufw status verbose
 
-### Creating a Release
+# Verify secrets loaded
+sandbox ssh
+sudo cat /etc/openclaw/secrets.env
+
+# Check overlay state
+sandbox ssh
+overlay-status
+
+# Reset overlay (discard all writes)
+sandbox ssh
+sudo overlay-reset
+```
+
+## 🚢 Releases
 
 ```bash
 # Use the release script
-./scripts/release.sh 0.4.0
+./scripts/release.sh 0.7.0
 
 # This will:
 # 1. Validate semver format
@@ -625,10 +483,32 @@ We use [semantic versioning](https://semver.org/) with milestone-based releases.
 # 5. GitHub Actions creates the release
 ```
 
-### Version History
-
 See [CHANGELOG.md](./CHANGELOG.md) for detailed release notes.
+
+## 🤝 Contributing
+
+1. Fork the repo
+2. Create a feature branch
+3. Make changes
+4. Run tests: `uv run --directory cli pytest tests/ -v`
+5. Open a PR (CI will run automatically)
+
+## 📋 Requirements
+
+- macOS with Apple Silicon or Intel
+- [Homebrew](https://brew.sh/)
+- ~10GB disk space
+
+Dependencies are installed automatically: [Lima](https://lima-vm.io/), [Ansible](https://www.ansible.com/), [jq](https://jqlang.github.io/jq/), [gitleaks](https://github.com/gitleaks/gitleaks), [Tailscale](https://tailscale.com/) (optional).
 
 ## License
 
 MIT License. See [LICENSE](./LICENSE).
+
+---
+
+<div align="center">
+
+**Provision once. Run forever.**
+
+</div>

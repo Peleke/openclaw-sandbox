@@ -13,10 +13,11 @@ dependencies = [
     "tomli>=2,<3;python_version<'3.11'",
     "tomli-w>=1,<2",
     "rich>=13,<14",
+    "jinja2>=3.1,<4",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<9"]
+dev = ["pytest>=8,<9", "pyyaml>=6,<7"]
 
 [project.scripts]
 sandbox = "sandbox_cli.app:app"
