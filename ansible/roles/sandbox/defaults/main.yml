@@ -28,16 +28,26 @@ sandbox_docker_network: "none"
 # Per-tool network routing (dual-container architecture)
 # Tools listed here run in a separate network-enabled container.
 # All other tools stay in the isolated (network: none) container.
-# Empty list = no per-tool routing (single container, backward compatible)
-sandbox_network_allow: []
+# Override with [] to disable dual-container routing entirely.
+sandbox_network_allow:
+  - "web_fetch"
+  - "web_search"
 
 # Operator-defined tools to append to the network allow list.
 # Merged with sandbox_network_allow at config injection time.
-# Example: ["gh"] to give the GitHub CLI network access
+# Example: ["browser"] to give the browser tool network access
 sandbox_network_allow_extra: []
 
+# Command prefixes routed to the network container when invoked via exec.
+# Only these commands get bridge networking; all other exec stays air-gapped.
+sandbox_network_exec_allow:
+  - "gh"
+
+# Operator-defined command prefixes to append to networkExecAllow.
+sandbox_network_exec_allow_extra: []
+
 # Network mode for the network-enabled container
-# Only used when sandbox_network_allow is non-empty
+# Only used when sandbox_network_allow or sandbox_network_exec_allow is non-empty
 sandbox_network_docker_network: "bridge"
 
 # OpenClaw sandbox-setup.sh location (relative to workspace)
