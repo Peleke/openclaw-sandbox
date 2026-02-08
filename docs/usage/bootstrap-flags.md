@@ -1,6 +1,34 @@
 # Bootstrap Flags
 
-`bootstrap.sh` is the single entry point for creating, configuring, and managing your sandbox VM. This page documents every flag, environment variable, and usage pattern.
+!!! note "Python CLI is the recommended interface"
+    The primary way to manage your sandbox is now the **Python CLI** (`sandbox` command). The CLI wraps `bootstrap.sh` with a profile-based configuration system and interactive setup:
+
+    ```bash
+    # Create a profile interactively
+    sandbox init
+
+    # Provision or re-provision
+    sandbox up
+
+    # Check status
+    sandbox status
+
+    # SSH into the VM
+    sandbox ssh
+
+    # Sync overlay changes to host
+    sandbox sync
+
+    # Stop the VM
+    sandbox down
+
+    # Delete the VM
+    sandbox destroy
+    ```
+
+    See [Getting Started](../getting-started/first-session.md) for a walkthrough. The flags documented below still work with `bootstrap.sh` directly and are useful for understanding what the CLI does under the hood.
+
+`bootstrap.sh` is the underlying entry point for creating, configuring, and managing your sandbox VM. This page documents every flag, environment variable, and usage pattern.
 
 ## Required Flags
 
@@ -104,6 +132,48 @@ Disable the overlay entirely. Host directories are mounted **read-write** -- the
     ./bootstrap.sh --delete
     ./bootstrap.sh --openclaw ~/Projects/openclaw --yolo-unsafe
     ```
+
+### `--agent-data PATH`
+
+Mount a directory for persistent agent data (green.db, learning.db) at `/mnt/openclaw-agents` inside the VM. Agent data files are symlinked from `~/.openclaw/` to this mount so they persist across VM recreations.
+
+```bash
+./bootstrap.sh --openclaw ~/Projects/openclaw --agent-data ~/.openclaw/agents
+```
+
+### `--buildlog-data PATH`
+
+Mount a directory for persistent buildlog data at `/mnt/buildlog-data` inside the VM.
+
+```bash
+./bootstrap.sh --openclaw ~/Projects/openclaw --buildlog-data ~/.buildlog
+```
+
+### `--skills PATH`
+
+Mount a custom skills directory at `/mnt/skills-custom` (read-only) inside the VM. Used by cadence for loading custom skill definitions.
+
+```bash
+./bootstrap.sh --openclaw ~/Projects/openclaw --skills ~/Projects/skills/skills/custom
+```
+
+### `--memgraph`
+
+Forward all Memgraph ports (7687, 3000, 7444) from the VM to the host for graph database access.
+
+```bash
+./bootstrap.sh --openclaw ~/Projects/openclaw --memgraph
+```
+
+### `--memgraph-port PORT`
+
+Forward a specific Memgraph port. Can be specified multiple times.
+
+```bash
+./bootstrap.sh --openclaw ~/Projects/openclaw \
+  --memgraph-port 7687 \
+  --memgraph-port 3000
+```
 
 ### `-e KEY=VALUE`
 
@@ -244,15 +314,42 @@ Running `bootstrap.sh` again on an existing VM skips creation and just re-runs t
 
 ## Full Examples
 
+### Using the Python CLI (recommended)
+
+```bash
+# Interactive profile setup — walks you through all options
+sandbox init
+
+# Provision the VM with your saved profile
+sandbox up
+
+# Re-provision after config changes
+sandbox up
+
+# Check what's running
+sandbox status
+
+# SSH into the VM
+sandbox ssh
+
+# Sync overlay changes back to host
+sandbox sync
+```
+
+### Using bootstrap.sh directly
+
 ```bash
 # Minimal: just the openclaw repo
 ./bootstrap.sh --openclaw ~/Projects/openclaw
 
-# Kitchen sink: secrets, config, vault, GitHub token, Telegram
+# Kitchen sink: secrets, config, vault, agent data, skills
 ./bootstrap.sh --openclaw ~/Projects/openclaw \
   --secrets ~/.openclaw-secrets.env \
   --config ~/.openclaw \
   --vault ~/Documents/Vaults/main \
+  --agent-data ~/.openclaw/agents \
+  --buildlog-data ~/.buildlog \
+  --skills ~/Projects/skills/skills/custom \
   -e "telegram_user_id=123456789"
 
 # YOLO mode for fast iteration
@@ -260,6 +357,9 @@ Running `bootstrap.sh` again on an existing VM skips creation and just re-runs t
 
 # Lightweight VM without Docker
 ./bootstrap.sh --openclaw ~/Projects/openclaw --no-docker
+
+# With Memgraph graph database
+./bootstrap.sh --openclaw ~/Projects/openclaw --memgraph
 
 # CI/testing: direct secret injection, no interactive prompts
 ./bootstrap.sh --openclaw ~/Projects/openclaw \

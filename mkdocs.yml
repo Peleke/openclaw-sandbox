@@ -27,6 +27,7 @@ nav:
     - GitHub CLI: configuration/github-cli.md
     - Obsidian Vault: configuration/obsidian-vault.md
     - Cadence: configuration/cadence.md
+    - Qortex: configuration/qortex.md
     - buildlog: configuration/buildlog.md
   - Architecture:
     - Overview: architecture/overview.md

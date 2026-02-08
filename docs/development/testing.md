@@ -54,7 +54,11 @@ Quick mode runs only the Ansible validation tests. This is fast (seconds) and us
 ./tests/sandbox/run-all.sh --quick && \
 ./tests/gh-cli/run-all.sh --quick && \
 ./tests/obsidian/run-all.sh --quick && \
-./tests/cadence/run-all.sh --quick
+./tests/cadence/run-all.sh --quick && \
+./tests/gateway/run-all.sh --quick && \
+./tests/buildlog/run-all.sh --quick && \
+./tests/qortex/run-all.sh --quick && \
+./tests/telegram/run-all.sh --quick
 ```
 
 !!! tip
@@ -66,7 +70,7 @@ Full mode runs both Ansible validation and VM deployment tests. The VM must be r
 
 ```bash
 # Ensure VM is up
-limactl list   # Should show openclaw-sandbox as Running
+sandbox status   # or: limactl list
 
 # Run full suite for a single role
 ./tests/overlay/run-all.sh
@@ -76,7 +80,11 @@ limactl list   # Should show openclaw-sandbox as Running
 ./tests/sandbox/run-all.sh && \
 ./tests/gh-cli/run-all.sh && \
 ./tests/obsidian/run-all.sh && \
-./tests/cadence/run-all.sh
+./tests/cadence/run-all.sh && \
+./tests/gateway/run-all.sh && \
+./tests/buildlog/run-all.sh && \
+./tests/qortex/run-all.sh && \
+./tests/telegram/run-all.sh
 ```
 
 !!! warning
@@ -147,6 +155,49 @@ Covers: `uv tool install buildlog`, CLAUDE.md 3-step pipeline (copy base, init-m
 | `test-telegram-role.sh` | VM deployment | Bot connection, pairing flow |
 
 Covers: `dmPolicy: "pairing"`, `TELEGRAM_BOT_TOKEN` secrets flow, pre-approved user ID.
+
+### Gateway Tests
+
+| File | Type | Description |
+|------|------|-------------|
+| `test-gateway-ansible.sh` | Ansible validation | Role structure, systemd unit, config injection |
+| `test-gateway-role.sh` | VM deployment | Gateway service running, port forwarding, Docker access |
+
+Covers: systemd service, `SupplementaryGroups=docker`, port 18789 forwarding, `openclaw.json` config.
+
+### Qortex Tests
+
+| File | Type | Description |
+|------|------|-------------|
+| `test-qortex-ansible.sh` | Ansible validation | Role structure, defaults, directory setup, interop config |
+| `test-qortex-role.sh` | VM deployment | Seed directories, signals directory, qortex CLI, interop.yaml |
+
+Covers: `~/.qortex/seeds/{pending,processed,failed}`, `~/.qortex/signals/`, `~/.buildlog/interop.yaml`, `uv tool install qortex`.
+
+### Python CLI Tests (pytest)
+
+The Python CLI has its own test suite (273 tests) run via pytest:
+
+```bash
+cd cli && pytest
+```
+
+Covers: profile management, VM orchestration, MCP server tools, Lima manager, config validation.
+
+## Test Counts Summary
+
+| Suite | Static (Ansible) | VM/E2E | Total |
+|-------|:-:|:-:|:-:|
+| Sandbox | 117 | 49 | 166 |
+| GitHub CLI | 110 | -- | 110 |
+| Cadence | 32 | 32 | 64 |
+| Overlay | 58 | 19 | 77 |
+| Obsidian | 66 | -- | 66 |
+| Qortex | 58 | -- | 58 |
+| Telegram | 56 | -- | 56 |
+| Gateway | 55 | -- | 55 |
+| Buildlog | 51 | -- | 51 |
+| Python CLI | -- | -- | 273 (pytest) |
 
 ## CI/CD
 

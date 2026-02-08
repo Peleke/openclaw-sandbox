@@ -8,13 +8,15 @@ OpenClaw Sandbox runs AI agents inside a hardened Linux VM with strict filesyste
 
 ### Layer 1: macOS Host
 
-The host machine runs `bootstrap.sh`, which orchestrates everything:
+The host machine runs the **Python CLI** (`sandbox` command) or `bootstrap.sh`, which orchestrates everything:
 
 1. **Installs dependencies** from the Brewfile (Lima, Ansible, jq, gitleaks)
 2. **Generates a Lima YAML config** programmatically (no template file -- the config is built directly in bash with `cat` heredocs)
 3. **Creates and starts the Lima VM** with `limactl create` / `limactl start`
 4. **Verifies host mounts** are accessible inside the VM
 5. **Runs the Ansible playbook** over SSH to provision all services
+
+The Python CLI (`sandbox up`, `sandbox status`, `sandbox ssh`, etc.) is the recommended interface. It wraps `bootstrap.sh` with profile-based configuration and an interactive setup wizard (`sandbox init`). An **MCP server** (`sandbox-mcp`) is also available for LLM agents to manage the sandbox programmatically via FastMCP over stdio.
 
 The host also provides the sync-gate exit path (`scripts/sync-gate.sh`) for getting approved changes back from the VM overlay.
 
@@ -30,12 +32,13 @@ A [Lima](https://lima-vm.io/) virtual machine running Ubuntu 24.04 with Apple's 
 
 ### Layer 3: Docker Containers
 
-Individual tool executions (file reads/writes, shell commands, browser actions) are sandboxed inside Docker containers:
+Individual tool executions (file reads/writes, shell commands, browser actions) are sandboxed inside Docker containers using **dual-container network isolation**:
 
+- **Isolated container** (`network: none`): most tool executions — air-gapped, no internet
+- **Network container** (`network: bridge`): tools matching `networkAllow` (e.g., `web_fetch`, `web_search`) or `networkExecAllow` (e.g., `gh` commands)
 - **Image**: `openclaw-sandbox:bookworm-slim` (auto-augmented with `gh` if missing)
-- **Network**: `bridge` by default (configurable to `none` for full isolation)
-- **Scope**: one container per session
-- **Workspace**: `/workspace` bind-mounted read-write into the container
+- **Scope**: one container pair per session
+- **Workspace**: `/workspace` bind-mounted read-write into both containers
 
 ## Component Breakdown
 
@@ -62,6 +65,9 @@ Host directories are mounted into the VM using virtiofs:
 | Sandbox repo directory | `/mnt/provision` | Read-only (always) |
 | Obsidian vault (optional) | `/mnt/obsidian` | Read-only (default) |
 | `~/.openclaw` (optional) | `/mnt/openclaw-config` | Read-only (default) |
+| Agent data (optional) | `/mnt/openclaw-agents` | Read-write (always) |
+| Buildlog data (optional) | `/mnt/buildlog-data` | Read-write (always) |
+| Custom skills (optional) | `/mnt/skills-custom` | Read-only (always) |
 | Secrets parent dir (optional) | `/mnt/secrets` | Read-only (always) |
 
 !!! important
@@ -94,6 +100,7 @@ When Docker is enabled, the sandbox role:
 1. Builds the sandbox image using OpenClaw's `scripts/sandbox-setup.sh` (or a fallback Dockerfile)
 2. Layers `gh` CLI on top if missing (inspects the base image user and restores it after augmentation)
 3. Configures `openclaw.json` with sandbox settings via the `combine()` pattern
+4. Sets up **dual-container network isolation**: `networkAllow` and `networkExecAllow` route specific tools to a bridge-networked container while the default container is air-gapped
 
 ### UFW Firewall
 
@@ -127,8 +134,9 @@ The Ansible playbook (`ansible/playbook.yml`) executes roles in this order:
 | 7 | `tailscale` | S4 | Set up Tailscale routing |
 | 8 | `cadence` | S7 | Deploy ambient insight pipeline |
 | 9 | `buildlog` | S8 | Install buildlog for ambient learning |
-| 10 | `sandbox` | S10 | Build sandbox image, configure `openclaw.json` |
-| 11 | `sync-gate` | S9 | Deploy sync helper scripts |
+| 10 | `qortex` | -- | Set up seed exchange directories and interop config |
+| 11 | `sandbox` | S10 | Build sandbox image, configure `openclaw.json` (dual-container) |
+| 12 | `sync-gate` | S9 | Deploy sync helper scripts |
 
 The ordering is intentional: secrets must be available before anything else, overlay must exist before the gateway starts (it depends on `workspace.mount`), Docker must be ready before the gateway gets `SupplementaryGroups=docker`, and the sandbox role needs the workspace built.
 
@@ -148,7 +156,9 @@ portForwards:
 
 This makes the gateway accessible at `localhost:18789` on the host. The `claw` CLI and host-side tools connect through this port.
 
-## How bootstrap.sh Orchestrates Everything
+## How Provisioning Works
+
+The Python CLI (`sandbox up`) is the recommended entry point. It loads a saved profile and calls `bootstrap.sh` under the hood. LLM agents can also use the MCP server (`sandbox-mcp`) which exposes `sandbox_up`, `sandbox_down`, `sandbox_status`, and other tools via FastMCP over stdio.
 
 The main flow in `bootstrap.sh`:
 
@@ -171,7 +181,7 @@ ensure_vm()               # limactl create/start
 verify_mounts()           # Confirm /mnt/* paths are accessible
   |
   v
-run_ansible()             # Provision all 11 roles
+run_ansible()             # Provision all 12 roles
   |
   v
 Done.

@@ -7,6 +7,69 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+**Cadence Wiring (PR #70)**
+- End-to-end vault sync pipeline: Obsidian note → rsync → chokidar → signal bus → Telegram
+- `--skills PATH` flag mounts custom skills directory at `/mnt/skills-custom` (read-only)
+- `fileLogPath` in cadence.json enables container signal bridging via JSONL
+- launchd plists for host-side scheduling (`com.openclaw.vault-sync.plist`, `com.openclaw.cadence.plist`)
+- `--exclude=.obsidian/` in rsync avoids ESTALE on virtiofs lower-layer config files
+
+**MCP Server (PR #65)**
+- Agent-driven sandbox management via FastMCP (`sandbox-mcp` console script)
+- Tools: `sandbox_up`, `sandbox_down`, `sandbox_status`, `sandbox_ssh`, `sandbox_sync`
+- Runs over stdio transport for seamless integration with LLM agents
+- Plain-function implementations for testability; registered via `mcp.tool(fn)`
+
+**Secrets Auto-Export + Vault Rsync (PR #63)**
+- iCloud lock bypass: rsync-based vault sync for files locked by iCloud Drive
+- Host-side `sync-vault.sh` script for manual or cron-based vault sync
+
+**Python CLI (PRs #60, #62)**
+- Typer-based CLI replacing bash bootstrap as the primary interface
+- Commands: `sandbox up`, `sandbox down`, `sandbox destroy`, `sandbox status`, `sandbox ssh`, `sandbox sync`, `sandbox dashboard`
+- Profile-based configuration via `~/.openclaw-sandbox/profiles/`
+- Interactive `sandbox init` wizard for profile creation
+
+**File Ownership Fix (PR #58)**
+- Agent identity persistence across VM restarts
+
+**Dogfood-Ready Sandbox (PR #57)**
+- Config/data isolation: `~/.openclaw/` config files copied (patchable), agent data symlinked to writable mount
+- `--agent-data PATH` mounts persistent agent data at `/mnt/openclaw-agents`
+- `--buildlog-data PATH` mounts persistent buildlog data at `/mnt/buildlog-data`
+- Qortex interop role: seed exchange directories, buildlog interop config, qortex CLI
+- `--memgraph` and `--memgraph-port` flags for Memgraph port forwarding
+
+**Dual-Container Network Isolation (PR #55)**
+- Per-tool network routing: two containers per scope (isolated + network)
+- `networkAllow`: tool-level routing (`web_fetch`, `web_search` → bridge container)
+- `networkExecAllow`: command-prefix routing (`gh` → bridge, others → air-gapped)
+- `networkDocker`: bridge container config (network mode, DNS)
+- Operator extension variables: `sandbox_network_allow_extra`, `sandbox_network_exec_allow_extra`
+- BRAVE_API_KEY added to full secrets pipeline
+
+**MkDocs Documentation (PR #41)**
+- Full documentation site with MkDocs Material theme
+- Architecture, configuration, security (STRIDE), development, and troubleshooting docs
+
+**Obsidian Vault Access (PR #37)**
+- Vault mounting with OverlayFS overlay at `/workspace-obsidian`
+- Stale mount unit cleanup when vault is removed
+
+**GitHub CLI Integration (PR #36)**
+- gh-cli Ansible role with APT repo installation
+- GH_TOKEN secrets pipeline integration and sandbox env passthrough
+
+### Fixed
+
+- Vault write access default changed from `ro` to `rw` (PR #67)
+- Vault sync writes to merged overlay mount (`/workspace-obsidian/`) instead of upper dir, fixing inotify visibility (PR #70)
+- Jinja2 operator precedence bug in networkExecAllow injection (PR #55)
+- Obsidian overlay mount bad unit file error: double backslash → single in YAML plain scalar (PR #36)
+- Obsidian mount failure when no vault mounted: stale unit cleanup (PR #37)
+
 ## [0.3.0] - 2026-02-03
 
 ### Added
