@@ -250,6 +250,8 @@ echo ""
 echo "▸ Sandbox Role Defaults"
 echo ""
 
+SANDBOX_DEFAULTS_FILE="$SANDBOX_ROLE/defaults/main.yml"
+
 SANDBOX_DEFAULTS=(
   "sandbox_enabled"
   "sandbox_mode"
@@ -260,6 +262,8 @@ SANDBOX_DEFAULTS=(
   "sandbox_docker_network"
   "sandbox_network_allow"
   "sandbox_network_allow_extra"
+  "sandbox_network_exec_allow"
+  "sandbox_network_exec_allow_extra"
   "sandbox_network_docker_network"
   "sandbox_setup_script"
 )
@@ -307,11 +311,11 @@ else
   log_fail "sandbox_docker_network should default to 'none'"
 fi
 
-# Check sandbox_network_allow default is empty list
-if grep -q 'sandbox_network_allow: \[\]' "$SANDBOX_ROLE/defaults/main.yml"; then
-  log_pass "sandbox_network_allow defaults to empty list"
+# Check sandbox_network_allow default includes sane tools
+if grep -A3 'sandbox_network_allow:' "$SANDBOX_ROLE/defaults/main.yml" | grep -q 'web_fetch'; then
+  log_pass "sandbox_network_allow defaults include web_fetch"
 else
-  log_fail "sandbox_network_allow should default to empty list"
+  log_fail "sandbox_network_allow should default to include web_fetch"
 fi
 
 # Check sandbox_network_allow_extra default is empty list
@@ -462,10 +466,72 @@ else
 fi
 
 # Check fresh openclaw.json includes docker.network
-if grep -A15 "Create openclaw.json with sandbox config" "$SANDBOX_TASKS" | grep -q "sandbox_docker_network"; then
+if grep -A20 "Create openclaw.json with sandbox config" "$SANDBOX_TASKS" | grep -q "sandbox_docker_network"; then
   log_pass "Fresh openclaw.json includes docker.network"
 else
   log_fail "Fresh openclaw.json should include docker.network"
+fi
+
+# Check tasks contain networkExecAllow injection logic
+if grep -q "networkExecAllow" "$SANDBOX_TASKS"; then
+  log_pass "Tasks contain networkExecAllow config injection"
+else
+  log_fail "Tasks missing networkExecAllow config injection"
+fi
+
+# Check tasks merge sandbox_network_exec_allow + extra
+if grep -q "sandbox_network_exec_allow_extra" "$SANDBOX_TASKS"; then
+  log_pass "Tasks merge sandbox_network_exec_allow + sandbox_network_exec_allow_extra"
+else
+  log_fail "Tasks should merge base + extra network exec allow lists"
+fi
+
+# Check _has_network_routing considers both allow lists
+if grep -q "_has_network_routing" "$SANDBOX_TASKS"; then
+  log_pass "Tasks compute _has_network_routing from both allow lists"
+else
+  log_fail "Tasks should compute _has_network_routing from both allow lists"
+fi
+
+# Check networkExecAllow default in defaults/main.yml
+if grep -q 'sandbox_network_exec_allow:' "$SANDBOX_DEFAULTS_FILE"; then
+  log_pass "Defaults contain sandbox_network_exec_allow"
+else
+  log_fail "Defaults missing sandbox_network_exec_allow"
+fi
+
+# Check networkExecAllow default includes gh
+if grep -A2 'sandbox_network_exec_allow:' "$SANDBOX_DEFAULTS_FILE" | grep -q '"gh"'; then
+  log_pass "Default sandbox_network_exec_allow includes 'gh'"
+else
+  log_fail "Default sandbox_network_exec_allow should include 'gh'"
+fi
+
+# Check networkAllow default includes web_fetch and web_search
+if grep -A3 'sandbox_network_allow:' "$SANDBOX_DEFAULTS_FILE" | grep -q '"web_fetch"'; then
+  log_pass "Default sandbox_network_allow includes 'web_fetch'"
+else
+  log_fail "Default sandbox_network_allow should include 'web_fetch'"
+fi
+
+if grep -A3 'sandbox_network_allow:' "$SANDBOX_DEFAULTS_FILE" | grep -q '"web_search"'; then
+  log_pass "Default sandbox_network_allow includes 'web_search'"
+else
+  log_fail "Default sandbox_network_allow should include 'web_search'"
+fi
+
+# Check fresh openclaw.json path includes networkExecAllow when configured
+if grep -A25 "Create openclaw.json with network routing config" "$SANDBOX_TASKS" | grep -q "networkExecAllow"; then
+  log_pass "Fresh openclaw.json with routing config includes networkExecAllow"
+else
+  log_fail "Fresh openclaw.json with routing config should include networkExecAllow"
+fi
+
+# Check status display includes network exec allow
+if grep -q "Network exec allow" "$SANDBOX_TASKS"; then
+  log_pass "Status display shows network exec allow"
+else
+  log_fail "Status display should show network exec allow"
 fi
 
 echo ""
