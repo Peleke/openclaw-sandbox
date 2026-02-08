@@ -8,11 +8,11 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/Peleke/openclaw-sandbox/ci.yml?style=for-the-badge&label=CI)](https://github.com/Peleke/openclaw-sandbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-macOS-blue?style=for-the-badge&logo=apple&logoColor=white)](https://lima-vm.io/)
-[![Tests](https://img.shields.io/badge/Tests-208_passed-brightgreen?style=for-the-badge)](cli/tests/)
+[![Tests](https://img.shields.io/badge/Tests-273_passed-brightgreen?style=for-the-badge)](cli/tests/)
 
 **Run AI agents with network containment, audit trails, and secrets management.**
 
-[Quick Start](#-quick-start) · [Features](#-features) · [Architecture](#-architecture) · [CLI Reference](#-cli-reference) · [Contributing](#-contributing)
+[Quick Start](#-quick-start) · [Features](#-features) · [Architecture](#-architecture) · [CLI Reference](#-cli-reference) · [MCP Server](#-mcp-server) · [Contributing](#-contributing)
 
 ---
 
@@ -49,7 +49,7 @@ You: sandbox ssh
      → You're inside the VM. Do whatever you want.
 ```
 
-**10 Ansible roles. 208 CLI tests. Zero manual config.**
+**12 Ansible roles. 273 CLI tests. 9 MCP tools. Zero manual config.**
 
 ---
 
@@ -80,7 +80,7 @@ Mount your vault read-only into the VM and sandbox containers. The agent can rea
 Pairing-based access control. Pre-seed your Telegram user ID or use the built-in pairing flow. No open access by default.
 
 ### 📊 buildlog Integration
-[buildlog](https://github.com/Peleke/buildlog-template) is pre-installed for ambient learning capture — structured trajectories, Thompson Sampling for rule surfacing, automatic CLAUDE.md rendering. MCP server registered with 29 tools.
+[buildlog](https://github.com/Peleke/buildlog-template) is pre-installed for ambient learning capture — structured trajectories, Thompson Sampling for rule surfacing, automatic CLAUDE.md rendering. buildlog's own MCP server is registered with its full tool suite.
 
 ### ⚡ Zero-Config Deploy
 Single `sandbox up` from macOS. Homebrew, Lima, Ansible — all dependencies installed automatically. Apple Silicon with Rosetta, or Intel. ~10GB disk.
@@ -233,12 +233,57 @@ vault = "~/Documents/Vaults/ClawTheCurious"
 yolo = false
 yolo_unsafe = false
 no_docker = false
+memgraph = false
+memgraph_ports = []
 
 [resources]
 cpus = 4
 memory = "8GiB"
 disk = "50GiB"
 ```
+
+## 🤖 MCP Server
+
+The MCP server lets agents manage the sandbox programmatically — no shell wrappers needed.
+
+### Setup
+
+```bash
+# Install with MCP support
+pip install openclaw-sandbox
+
+# Add to Claude Code settings (~/.claude/settings.json)
+{
+  "mcpServers": {
+    "sandbox": {
+      "command": "sandbox-mcp"
+    }
+  }
+}
+```
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `sandbox_status` | VM state, profile, agent identity, learning stats, gateway URLs |
+| `sandbox_up` | Provision or reprovision the VM (1-5 min) |
+| `sandbox_down` | Stop the VM (force kill) |
+| `sandbox_destroy` | Delete the VM entirely |
+| `sandbox_exec` | Run a command inside the VM (120s timeout) |
+| `sandbox_validate` | Validate the current profile |
+| `sandbox_ssh_info` | SSH connection details (host/port/user/key) |
+| `sandbox_gateway_info` | Dashboard URLs with auth |
+| `sandbox_agent_identity` | Agent name and emoji from identity file |
+
+`sandbox_exec` is the primary tool for agents. It runs commands inside the VM and returns `stdout`, `stderr`, and `exit_code`:
+
+```json
+{"command": "cd /workspace && node dist/index.js status"}
+// → {"stdout": "...", "stderr": "", "exit_code": 0}
+```
+
+---
 
 ### Filesystem Modes
 
@@ -384,23 +429,27 @@ openclaw-sandbox/
 │   │   ├── deps.py               # Homebrew/Ansible dependency checks
 │   │   ├── profile.py            # Profile loading + init wizard
 │   │   ├── validation.py         # Profile validation
-│   │   ├── bootstrap.py          # Legacy bash delegation (deprecated)
+│   │   ├── mcp_server.py          # MCP server (9 tools, FastMCP)
+│   │   ├── _capture.py            # Output capture for MCP stdio safety
+│   │   ├── bootstrap.py           # Legacy bash delegation (deprecated)
 │   │   └── templates/
-│   │       └── lima-vm.yaml.j2   # Lima VM config template
-│   └── tests/                    # 208 pytest tests
+│   │       └── lima-vm.yaml.j2    # Lima VM config template
+│   └── tests/                     # 273 pytest tests
 ├── ansible/
 │   ├── playbook.yml              # Main playbook
 │   └── roles/
-│       ├── overlay/              # OverlayFS isolation
-│       ├── sandbox/              # Docker sandbox config
+│       ├── overlay/              # OverlayFS isolation + obsidian vault overlay
+│       ├── sandbox/              # Docker sandbox config + image augmentation
 │       ├── docker/               # Docker CE installation
-│       ├── secrets/              # Secrets extraction + injection
-│       ├── gh-cli/               # GitHub CLI
-│       ├── obsidian/             # Vault mount + container bind
+│       ├── secrets/              # Secrets extraction + injection + shell export
+│       ├── gh-cli/               # GitHub CLI from official APT repo
 │       ├── gateway/              # OpenClaw gateway systemd service
 │       ├── firewall/             # UFW network policy
+│       ├── sync-gate/            # Gated sync validation pipeline
 │       ├── buildlog/             # buildlog + MCP registration
-│       └── qortex/               # Qortex interop + Memgraph
+│       ├── qortex/               # Qortex interop + Memgraph
+│       ├── tailscale/            # Tailscale VPN integration
+│       └── cadence/              # Service startup sequencing
 ├── scripts/
 │   ├── sync-gate.sh              # Host-side sync with gitleaks
 │   ├── dashboard.sh              # Gateway dashboard opener
@@ -417,7 +466,7 @@ openclaw-sandbox/
 
 ## 🧪 Tests
 
-### CLI Tests (208 tests)
+### CLI Tests (273 tests)
 
 ```bash
 uv run --directory cli pytest tests/ -v
