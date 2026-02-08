@@ -131,6 +131,24 @@
   loop_control:
     label: "{{ item.path | basename }}"
 
+# Copy identity subdirectories from mount (device auth, credentials, dotfiles)
+# These contain agent identity state that must survive VM recreation:
+#   identity/   — device-auth.json, device.json (gateway device identity)
+#   credentials/ — telegram-allowFrom.json, telegram-pairing.json (pairing state)
+#   dotfiles/   — env.sh, gateway.sh, setup.sh (runtime scripts)
+- name: Copy identity directories from config mount
+  when: config_mount.stat.exists
+  ansible.builtin.copy:
+    src: "/mnt/openclaw-config/{{ item }}/"
+    dest: "{{ user_home }}/.openclaw/{{ item }}/"
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    remote_src: true
+  loop: "{{ config_identity_dirs }}"
+  loop_control:
+    label: "{{ item }}"
+  failed_when: false
+
 # Agent data persistence: symlink to writable mount
 - name: Check if agent data mount exists
   ansible.builtin.stat:

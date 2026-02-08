@@ -1,0 +1,9 @@
+---
+# Gateway Role Defaults
+
+# Identity directories to copy from config mount into ~/.openclaw/
+# These contain agent identity and state that must persist across VM recreations.
+config_identity_dirs:
+  - identity
+  - credentials
+  - dotfiles

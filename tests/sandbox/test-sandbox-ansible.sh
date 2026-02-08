@@ -371,6 +371,28 @@ else
   log_fail "Tasks missing browser sandbox support"
 fi
 
+# Check openclaw.json writes set owner/group (CRITICAL: prevents root-owned config)
+# The sandbox role runs with become: true — without explicit owner/group,
+# openclaw.json ends up root:root 0640, which the gateway (running as ansible_user)
+# cannot read. This breaks GH_TOKEN, vault access, and workspace config.
+if grep -A8 "Write updated openclaw.json" "$SANDBOX_TASKS" | grep -q "owner:"; then
+  log_pass "openclaw.json write sets owner (gateway can read config)"
+else
+  log_fail "openclaw.json write MISSING owner — gateway CANNOT read config (root:root 0640)"
+fi
+
+if grep -A8 "Write updated openclaw.json" "$SANDBOX_TASKS" | grep -q "group:"; then
+  log_pass "openclaw.json write sets group"
+else
+  log_fail "openclaw.json write MISSING group"
+fi
+
+if grep -A8 "Create openclaw.json with sandbox config" "$SANDBOX_TASKS" | grep -q "owner:"; then
+  log_pass "openclaw.json create sets owner (fresh config path)"
+else
+  log_fail "openclaw.json create MISSING owner — fresh config will be root-owned"
+fi
+
 echo ""
 
 # ============================================================
