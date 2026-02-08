@@ -85,6 +85,14 @@
             state: directory
             mode: "0755"
 
+        - name: Fix obsidian overlay upper directory ownership
+          ansible.builtin.file:
+            path: "{{ overlay_upper_base }}/obsidian/upper"
+            state: directory
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: "0755"
+
         - name: Deploy obsidian overlay mount unit
           ansible.builtin.template:
             src: workspace-obsidian.mount.j2
