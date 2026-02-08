@@ -221,6 +221,178 @@ else
   log_fail "Container with --network none CAN resolve DNS (should be blocked)"
 fi
 
+# Verify docker.network in openclaw.json is "none" (secure default)
+USER_HOME_NET=$(vm_exec bash -c 'echo $HOME' 2>/dev/null || echo "/home/$(vm_exec whoami 2>/dev/null)")
+if vm_exec test -f "$USER_HOME_NET/.openclaw/openclaw.json" 2>/dev/null; then
+  NET_CONFIG=$(vm_exec cat "$USER_HOME_NET/.openclaw/openclaw.json" 2>/dev/null || echo "{}")
+  DOCKER_NETWORK=$(echo "$NET_CONFIG" | jq -r '.agents.defaults.sandbox.docker.network // ""' 2>/dev/null)
+  if [[ "$DOCKER_NETWORK" == "none" ]]; then
+    log_pass "openclaw.json docker.network = 'none' (secure default)"
+  elif [[ "$DOCKER_NETWORK" == "bridge" ]]; then
+    log_fail "openclaw.json docker.network = 'bridge' (should be 'none')"
+  elif [[ -n "$DOCKER_NETWORK" ]]; then
+    log_pass "openclaw.json docker.network = '$DOCKER_NETWORK' (custom)"
+  else
+    log_skip "docker.network not set in openclaw.json"
+  fi
+
+  # Check for per-tool network config (if configured)
+  NETWORK_ALLOW=$(echo "$NET_CONFIG" | jq -r '.agents.defaults.sandbox.networkAllow // empty' 2>/dev/null)
+  if [[ -n "$NETWORK_ALLOW" ]]; then
+    log_pass "openclaw.json has networkAllow configured"
+    NETWORK_DOCKER=$(echo "$NET_CONFIG" | jq -r '.agents.defaults.sandbox.networkDocker.network // ""' 2>/dev/null)
+    if [[ "$NETWORK_DOCKER" == "bridge" ]]; then
+      log_pass "openclaw.json networkDocker.network = 'bridge'"
+    elif [[ -n "$NETWORK_DOCKER" ]]; then
+      log_pass "openclaw.json networkDocker.network = '$NETWORK_DOCKER' (custom)"
+    else
+      log_fail "networkDocker.network should be set when networkAllow is configured"
+    fi
+  fi
+
+  # Check networkExecAllow config
+  NETWORK_EXEC_ALLOW=$(echo "$NET_CONFIG" | jq -r '.agents.defaults.sandbox.networkExecAllow // empty' 2>/dev/null)
+  if [[ -n "$NETWORK_EXEC_ALLOW" ]]; then
+    log_pass "openclaw.json has networkExecAllow configured"
+    # Verify 'gh' is in the list
+    if echo "$NET_CONFIG" | jq -e '.agents.defaults.sandbox.networkExecAllow | index("gh")' >/dev/null 2>&1; then
+      log_pass "networkExecAllow includes 'gh'"
+    else
+      log_fail "networkExecAllow should include 'gh'"
+    fi
+  fi
+else
+  log_skip "openclaw.json not found (cannot verify network config)"
+fi
+
+echo ""
+
+# ============================================================
+# SECTION 5b: Dual-Container Network Isolation (E2E)
+# ============================================================
+echo "▸ Dual-Container Network Isolation (E2E)"
+echo ""
+
+SANDBOX_IMAGE="openclaw-sandbox:bookworm-slim"
+TEST_SUFFIX="$$"
+
+# Check sandbox image exists before running container tests
+if vm_exec sudo docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep -q "$SANDBOX_IMAGE"; then
+
+  # --- Create isolated container (network: none) ---
+  ISOLATED_NAME="test-isolated-${TEST_SUFFIX}"
+  ISOLATED_ID=$(vm_exec sudo docker run -d --network none \
+    --name "$ISOLATED_NAME" \
+    --env GH_TOKEN='test-gh-token' \
+    --env BRAVE_API_KEY='test-brave-key' \
+    "$SANDBOX_IMAGE" sleep 120 2>/dev/null | grep -v "cd:" | tail -1)
+
+  if [[ -n "$ISOLATED_ID" ]]; then
+    log_pass "Created isolated container (network: none)"
+  else
+    log_fail "Failed to create isolated container"
+  fi
+
+  # --- Create bridge container (network: bridge) ---
+  BRIDGE_NAME="test-bridge-${TEST_SUFFIX}"
+  BRIDGE_ID=$(vm_exec sudo docker run -d --network bridge \
+    --name "$BRIDGE_NAME" \
+    --env GH_TOKEN='test-gh-token' \
+    --env BRAVE_API_KEY='test-brave-key' \
+    "$SANDBOX_IMAGE" sleep 120 2>/dev/null | grep -v "cd:" | tail -1)
+
+  if [[ -n "$BRIDGE_ID" ]]; then
+    log_pass "Created bridge container (network: bridge)"
+  else
+    log_fail "Failed to create bridge container"
+  fi
+
+  # --- Verify network modes via docker inspect ---
+  if [[ -n "$ISOLATED_ID" ]]; then
+    ISOLATED_NETS=$(vm_exec sudo docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$ISOLATED_NAME" 2>/dev/null | grep -v "cd:" || echo "")
+    if echo "$ISOLATED_NETS" | grep -q "none"; then
+      log_pass "Isolated container network = 'none'"
+    else
+      log_fail "Isolated container network should be 'none', got: $ISOLATED_NETS"
+    fi
+  fi
+
+  if [[ -n "$BRIDGE_ID" ]]; then
+    BRIDGE_NETS=$(vm_exec sudo docker inspect --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$BRIDGE_NAME" 2>/dev/null | grep -v "cd:" || echo "")
+    if echo "$BRIDGE_NETS" | grep -q "bridge"; then
+      log_pass "Bridge container network = 'bridge'"
+    else
+      log_fail "Bridge container network should be 'bridge', got: $BRIDGE_NETS"
+    fi
+  fi
+
+  # --- Verify env vars pass through to both containers ---
+  if [[ -n "$ISOLATED_ID" ]]; then
+    ISO_GH=$(vm_exec sudo docker exec "$ISOLATED_NAME" sh -c 'echo $GH_TOKEN' 2>/dev/null | grep -v "cd:" || echo "")
+    if [[ "$ISO_GH" == "test-gh-token" ]]; then
+      log_pass "Isolated container has GH_TOKEN env var"
+    else
+      log_fail "Isolated container missing GH_TOKEN (got: '$ISO_GH')"
+    fi
+
+    ISO_BRAVE=$(vm_exec sudo docker exec "$ISOLATED_NAME" sh -c 'echo $BRAVE_API_KEY' 2>/dev/null | grep -v "cd:" || echo "")
+    if [[ "$ISO_BRAVE" == "test-brave-key" ]]; then
+      log_pass "Isolated container has BRAVE_API_KEY env var"
+    else
+      log_fail "Isolated container missing BRAVE_API_KEY (got: '$ISO_BRAVE')"
+    fi
+  fi
+
+  if [[ -n "$BRIDGE_ID" ]]; then
+    BRG_GH=$(vm_exec sudo docker exec "$BRIDGE_NAME" sh -c 'echo $GH_TOKEN' 2>/dev/null | grep -v "cd:" || echo "")
+    if [[ "$BRG_GH" == "test-gh-token" ]]; then
+      log_pass "Bridge container has GH_TOKEN env var"
+    else
+      log_fail "Bridge container missing GH_TOKEN (got: '$BRG_GH')"
+    fi
+  fi
+
+  # --- Network isolation: isolated container CANNOT reach internet ---
+  if [[ -n "$ISOLATED_ID" ]]; then
+    if ! vm_exec sudo docker exec "$ISOLATED_NAME" sh -c 'curl -s --connect-timeout 3 https://api.github.com >/dev/null 2>&1' 2>/dev/null; then
+      log_pass "Isolated container cannot reach internet (curl fails)"
+    else
+      log_fail "Isolated container CAN reach internet (should be air-gapped)"
+    fi
+
+    # DNS should also fail
+    if ! vm_exec sudo docker exec "$ISOLATED_NAME" sh -c 'nslookup google.com >/dev/null 2>&1' 2>/dev/null; then
+      log_pass "Isolated container cannot resolve DNS"
+    else
+      log_fail "Isolated container CAN resolve DNS (should be blocked)"
+    fi
+  fi
+
+  # --- Network access: bridge container CAN reach internet ---
+  if [[ -n "$BRIDGE_ID" ]]; then
+    if vm_exec sudo docker exec "$BRIDGE_NAME" sh -c 'curl -s --connect-timeout 5 https://api.github.com >/dev/null 2>&1' 2>/dev/null; then
+      log_pass "Bridge container can reach internet (curl succeeds)"
+    else
+      log_fail "Bridge container cannot reach internet (should have bridge networking)"
+    fi
+
+    # gh binary should exist and be functional
+    GH_VERSION=$(vm_exec sudo docker exec "$BRIDGE_NAME" gh --version 2>/dev/null | grep -v "cd:" | head -1 || echo "")
+    if [[ -n "$GH_VERSION" ]]; then
+      log_pass "Bridge container: gh binary works ($GH_VERSION)"
+    else
+      log_fail "Bridge container: gh binary missing or broken"
+    fi
+  fi
+
+  # --- Cleanup ---
+  vm_exec sudo docker rm -f "$ISOLATED_NAME" "$BRIDGE_NAME" >/dev/null 2>&1 || true
+  log_pass "Cleaned up test containers"
+
+else
+  log_skip "Sandbox image not found — skipping dual-container E2E tests"
+fi
+
 echo ""
 
 # ============================================================

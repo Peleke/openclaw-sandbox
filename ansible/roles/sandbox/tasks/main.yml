@@ -255,6 +255,40 @@
             })
           }, recursive=true) }}
 
+    # Merge base + extra network allow lists
+    - name: Compute merged network allow list
+      ansible.builtin.set_fact:
+        _network_allow_merged: "{{ (sandbox_network_allow | default([])) + (sandbox_network_allow_extra | default([])) }}"
+
+    - name: Compute merged network exec allow list
+      ansible.builtin.set_fact:
+        _network_exec_allow_merged: "{{ (sandbox_network_exec_allow | default([])) + (sandbox_network_exec_allow_extra | default([])) }}"
+
+    - name: Check if any network routing is configured
+      ansible.builtin.set_fact:
+        _has_network_routing: "{{ (_network_allow_merged | length > 0) or (_network_exec_allow_merged | length > 0) }}"
+
+    # Add per-tool network routing config (dual-container architecture)
+    - name: Add per-tool network routing config
+      when: >
+        openclaw_json.stat.exists and
+        (_has_network_routing | bool)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': openclaw_config.agents | default({}) | combine({
+              'defaults': (openclaw_config.agents.defaults | default({})) | combine({
+                'sandbox': (openclaw_config.agents.defaults.sandbox | default({})) | combine(
+                  dict(
+                    ([('networkAllow', _network_allow_merged)] if (_network_allow_merged | length > 0) else [])
+                    + ([('networkExecAllow', _network_exec_allow_merged)] if (_network_exec_allow_merged | length > 0) else [])
+                    + [('networkDocker', {'network': sandbox_network_docker_network})]
+                  )
+                )
+              })
+            })
+          }, recursive=true) }}
+
     - name: Write updated openclaw.json
       when: openclaw_json.stat.exists
       ansible.builtin.copy:
@@ -266,7 +300,7 @@
       notify: Restart gateway
 
     - name: Create openclaw.json with sandbox config (if none exists)
-      when: not openclaw_json.stat.exists
+      when: not openclaw_json.stat.exists and not (_has_network_routing | bool)
       ansible.builtin.copy:
         dest: "{{ user_home }}/.openclaw/openclaw.json"
         owner: "{{ ansible_user }}"
@@ -279,11 +313,37 @@
                 "sandbox": {
                   "mode": "{{ sandbox_mode }}",
                   "scope": "{{ sandbox_scope }}",
-                  "workspaceAccess": "{{ sandbox_workspace_access }}"
+                  "workspaceAccess": "{{ sandbox_workspace_access }}",
+                  "docker": {
+                    "network": "{{ sandbox_docker_network }}"
+                  }
                 }
               }
             }
           }
+      notify: Restart gateway
+
+    - name: Create openclaw.json with network routing config (if none exists)
+      when: not openclaw_json.stat.exists and (_has_network_routing | bool)
+      ansible.builtin.copy:
+        dest: "{{ user_home }}/.openclaw/openclaw.json"
+        mode: "0640"
+        content: >-
+          {{ {
+            'agents': {
+              'defaults': {
+                'sandbox': dict(
+                  [('mode', sandbox_mode),
+                   ('scope', sandbox_scope),
+                   ('workspaceAccess', sandbox_workspace_access),
+                   ('docker', {'network': sandbox_docker_network})]
+                  + ([('networkAllow', _network_allow_merged)] if (_network_allow_merged | length > 0) else [])
+                  + ([('networkExecAllow', _network_exec_allow_merged)] if (_network_exec_allow_merged | length > 0) else [])
+                  + [('networkDocker', {'network': sandbox_network_docker_network})]
+                )
+              }
+            }
+          } | to_nice_json }}
       notify: Restart gateway
 
     - name: Sandbox configuration complete
@@ -294,6 +354,16 @@
             Mode: {{ sandbox_mode }}
             Scope: {{ sandbox_scope }}
             Workspace: {{ sandbox_workspace_access }}
+            Network: {{ sandbox_docker_network }}
+          {% if _network_allow_merged | length > 0 %}
+            Network allow: {{ _network_allow_merged | join(', ') }}
+          {% endif %}
+          {% if _network_exec_allow_merged | length > 0 %}
+            Network exec allow: {{ _network_exec_allow_merged | join(', ') }}
+          {% endif %}
+          {% if _has_network_routing | bool %}
+            Network container: {{ sandbox_network_docker_network }}
+          {% endif %}
           {% if not setup_script.stat.exists %}
             Note: Using fallback image (scripts/sandbox-setup.sh not found)
           {% endif %}
