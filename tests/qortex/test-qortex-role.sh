@@ -149,7 +149,79 @@ fi
 echo ""
 
 # ============================================================
-# SECTION 4: Qortex CLI
+# SECTION 4: OTEL Observability Environment
+# ============================================================
+echo "▸ OTEL Observability Environment"
+echo ""
+
+# Test: profile.d script deployed
+if vm_exec_quiet "test -f /etc/profile.d/qortex-otel.sh"; then
+  log_pass "/etc/profile.d/qortex-otel.sh exists"
+
+  # Test: Contains QORTEX_OTEL_ENABLED
+  if vm_exec "grep -q 'QORTEX_OTEL_ENABLED' /etc/profile.d/qortex-otel.sh" 2>/dev/null; then
+    log_pass "OTEL script exports QORTEX_OTEL_ENABLED"
+  else
+    log_fail "OTEL script missing QORTEX_OTEL_ENABLED"
+  fi
+
+  # Test: Contains OTEL_EXPORTER_OTLP_ENDPOINT
+  if vm_exec "grep -q 'OTEL_EXPORTER_OTLP_ENDPOINT' /etc/profile.d/qortex-otel.sh" 2>/dev/null; then
+    log_pass "OTEL script exports OTEL_EXPORTER_OTLP_ENDPOINT"
+  else
+    log_fail "OTEL script missing OTEL_EXPORTER_OTLP_ENDPOINT"
+  fi
+
+  # Test: Contains OTEL_EXPORTER_OTLP_PROTOCOL (http/protobuf for Lima reliability)
+  if vm_exec "grep -q 'OTEL_EXPORTER_OTLP_PROTOCOL' /etc/profile.d/qortex-otel.sh" 2>/dev/null; then
+    log_pass "OTEL script exports OTEL_EXPORTER_OTLP_PROTOCOL"
+  else
+    log_fail "OTEL script missing OTEL_EXPORTER_OTLP_PROTOCOL"
+  fi
+
+  # Test: Endpoint points to host
+  if vm_exec "grep -q 'host.lima.internal' /etc/profile.d/qortex-otel.sh" 2>/dev/null; then
+    log_pass "OTEL endpoint targets host.lima.internal"
+  else
+    log_fail "OTEL endpoint not targeting host.lima.internal"
+  fi
+else
+  log_skip "/etc/profile.d/qortex-otel.sh not deployed (OTEL may be disabled)"
+fi
+
+# Test: bash.bashrc hook
+if vm_exec "grep -q 'qortex-otel.sh' /etc/bash.bashrc" 2>/dev/null; then
+  log_pass "bash.bashrc hooks qortex-otel.sh"
+else
+  log_skip "bash.bashrc missing qortex-otel.sh hook"
+fi
+
+# Test: env vars available in shell
+OTEL_ENABLED=$(vm_exec "bash -l -c 'echo \$QORTEX_OTEL_ENABLED'" 2>/dev/null || echo "")
+if [[ "$OTEL_ENABLED" == "true" ]]; then
+  log_pass "QORTEX_OTEL_ENABLED=true in login shell"
+else
+  log_skip "QORTEX_OTEL_ENABLED not set (got: '$OTEL_ENABLED')"
+fi
+
+OTEL_ENDPOINT=$(vm_exec "bash -l -c 'echo \$OTEL_EXPORTER_OTLP_ENDPOINT'" 2>/dev/null || echo "")
+if [[ -n "$OTEL_ENDPOINT" && "$OTEL_ENDPOINT" == *"host.lima.internal"* ]]; then
+  log_pass "OTEL_EXPORTER_OTLP_ENDPOINT set to $OTEL_ENDPOINT"
+else
+  log_skip "OTEL_EXPORTER_OTLP_ENDPOINT not set"
+fi
+
+OTEL_PROTOCOL=$(vm_exec "bash -l -c 'echo \$OTEL_EXPORTER_OTLP_PROTOCOL'" 2>/dev/null || echo "")
+if [[ "$OTEL_PROTOCOL" == "http/protobuf" ]]; then
+  log_pass "OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf (bypasses gRPC)"
+else
+  log_skip "OTEL_EXPORTER_OTLP_PROTOCOL not set (got: '$OTEL_PROTOCOL')"
+fi
+
+echo ""
+
+# ============================================================
+# SECTION 5: Qortex CLI
 # ============================================================
 echo "▸ Qortex CLI"
 echo ""

@@ -65,13 +65,17 @@
     mode: "0640"
 
 # Install qortex CLI via uv (if enabled and uv is available)
+# NOTE: All uv tasks use become: false because the playbook has become: true
+# at play level, but uv writes to ~/.local and ~/.cache which must be user-owned.
 - name: Check if uv is installed
+  become: false
   ansible.builtin.command: "{{ user_home }}/.local/bin/uv --version"
   register: uv_check
   changed_when: false
   failed_when: false
 
 - name: Install uv (if not installed)
+  become: false
   when: qortex_install | default(true) | bool and uv_check.rc != 0
   ansible.builtin.shell: |
     curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -81,6 +85,7 @@
     HOME: "{{ user_home }}"
 
 - name: Check if qortex is installed as uv tool
+  become: false
   when: qortex_install | default(true) | bool
   ansible.builtin.shell: "{{ user_home }}/.local/bin/uv tool list | grep -q '^qortex '"
   register: qortex_check
@@ -90,6 +95,7 @@
     HOME: "{{ user_home }}"
 
 - name: Install qortex via uv tool
+  become: false
   when: qortex_install | default(true) | bool and (qortex_check.rc | default(1)) != 0
   ansible.builtin.shell: |
     {{ user_home }}/.local/bin/uv tool install qortex{% if qortex_extras %}[{{ qortex_extras }}]{% endif %}
@@ -102,6 +108,26 @@
   when: qortex_install_result is defined and qortex_install_result.changed | default(false)
   ansible.builtin.debug:
     msg: "{{ qortex_install_result.stdout | default('qortex installed') }}"
+
+# Deploy OTEL environment for qortex observability
+- name: Deploy qortex OTEL profile.d script
+  when: qortex_otel_enabled | default(false) | bool
+  become: true
+  ansible.builtin.template:
+    src: qortex-otel.sh.j2
+    dest: /etc/profile.d/qortex-otel.sh
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Hook qortex OTEL into bash.bashrc for non-login shells
+  when: qortex_otel_enabled | default(false) | bool
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/bash.bashrc
+    line: '[ -r /etc/profile.d/qortex-otel.sh ] && . /etc/profile.d/qortex-otel.sh'
+    insertafter: EOF
+    state: present
 
 - name: Qortex interop setup complete
   ansible.builtin.debug:
@@ -116,6 +142,10 @@
       Interop config: ~/.buildlog/interop.yaml
       {% if qortex_install | default(true) | bool %}
       CLI: qortex (installed via uv tool)
+      Extras: {{ qortex_extras | default('none') }}
+      {% endif %}
+      {% if qortex_otel_enabled | default(false) | bool %}
+      OTEL: enabled → {{ qortex_otel_endpoint }}
       {% endif %}
       {% if memgraph_enabled | default(false) | bool %}
       Memgraph ports forwarded (7687, 3000, 7444)
