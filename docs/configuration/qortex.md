@@ -84,11 +84,38 @@ This enables buildlog to:
 
 ## Configuration Variables
 
+### General
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `qortex_enabled` | `true` | Enable qortex directory setup and interop config |
 | `qortex_install` | `true` | Install qortex CLI via `uv tool install` |
-| `qortex_extras` | `""` | Pip extras for qortex (e.g. `"anthropic"` for LLM features) |
+| `qortex_extras` | `"mcp,vec,memgraph,observability"` | Pip extras for qortex (includes Memgraph Bolt driver) |
+
+### Storage Layers
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `qortex_vec` | `"sqlite"` | Vector backend: `"sqlite"` (persistent at `~/.qortex/vectors.db`) or `"memory"` (ephemeral) |
+| `qortex_graph` | `"memgraph"` | Graph backend: `"memgraph"` (persistent, requires running Memgraph) or `"memory"` (ephemeral) |
+| `qortex_memgraph_host` | `"host.lima.internal"` | Memgraph host (only used when `qortex_graph == "memgraph"`) |
+| `qortex_memgraph_port` | `7687` | Memgraph Bolt port |
+
+### Teleportation Factors
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `qortex_teleportation` | `true` | Enable feedback-driven PPR seed weighting. When true, accepted nodes get higher teleportation probability in future queries. When false, factors still accumulate but PPR uses uniform weights. |
+
+### OpenTelemetry
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `qortex_otel_enabled` | `true` | Enable OpenTelemetry observability (traces + metrics) |
+| `qortex_otel_endpoint` | `"http://host.lima.internal:4318"` | OTLP endpoint (HTTP, targets host OTel Collector) |
+| `qortex_otel_protocol` | `"http/protobuf"` | OTLP protocol (`"http/protobuf"` or `"grpc"`) |
+
+These variables are exported via `/etc/profile.d/qortex-otel.sh` and sourced in both login and non-login shells. The qortex MCP subprocess inherits them from the parent process environment.
 
 Override with `-e`:
 
@@ -96,8 +123,27 @@ Override with `-e`:
 # Disable qortex entirely
 ./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_enabled=false"
 
-# Install with LLM extras
-./bootstrap.sh --openclaw ~/Projects/openclaw -e 'qortex_extras=anthropic'
+# Use in-memory graph (no Memgraph required, ephemeral)
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_graph=memory"
+
+# Disable teleportation (factors accumulate but don't affect PPR)
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_teleportation=false"
+```
+
+### Persistence summary
+
+| Layer | Backend | Persistent | Location |
+|-------|---------|------------|----------|
+| Vectors | `sqlite` | Yes | `~/.qortex/vectors.db` |
+| Graph | `memgraph` | Yes | Memgraph server (Docker on host) |
+| Factors | local file | Yes (on update + clean shutdown) | `~/.qortex/factors.json` |
+| Edge buffer | local file | Yes (on clean shutdown) | `~/.qortex/edge_buffer.json` |
+
+With the default `qortex_graph: "memgraph"`, a running Memgraph instance is required. Start it on the host via the qortex-track-c Docker Compose stack:
+
+```bash
+cd /path/to/qortex-track-c
+docker compose -f docker/docker-compose.yml up -d memgraph memgraph-lab
 ```
 
 ## Standalone Use

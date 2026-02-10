@@ -1,7 +1,21 @@
 # {{ ansible_managed }}
-# Export OTEL env vars for qortex observability layer.
+# Export qortex env vars for storage layers, teleportation, and observability.
 # Sourced by: /etc/profile (login shells) and /etc/bash.bashrc (non-login shells)
 
+# --- Storage layers ---
+export QORTEX_VEC={{ qortex_vec | default('sqlite') }}
+export QORTEX_GRAPH={{ qortex_graph | default('memory') }}
+{% if (qortex_graph | default('memory')) == 'memgraph' %}
+
+# --- Memgraph connection ---
+export MEMGRAPH_HOST={{ qortex_memgraph_host | default('localhost') }}
+export MEMGRAPH_PORT={{ qortex_memgraph_port | default(7687) }}
+{% endif %}
+
+# --- Teleportation factors (PPR seed weighting from feedback) ---
+export QORTEX_TELEPORTATION={{ qortex_teleportation | default(false) | string | lower }}
+
+# --- OpenTelemetry observability ---
 export QORTEX_OTEL_ENABLED={{ qortex_otel_enabled | string | lower }}
 export OTEL_EXPORTER_OTLP_ENDPOINT={{ qortex_otel_endpoint }}
 export OTEL_EXPORTER_OTLP_PROTOCOL={{ qortex_otel_protocol | default('http/protobuf') }}
