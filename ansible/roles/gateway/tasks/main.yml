@@ -299,7 +299,9 @@
 
       [Install]
       WantedBy=multi-user.target
-  notify: Reload systemd
+  notify:
+    - Reload systemd
+    - Restart gateway after unit change
 
 - name: Enable gateway service
   become: true

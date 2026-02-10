@@ -16,6 +16,9 @@
     # SSH into the VM
     bilrost ssh
 
+    # Restart the gateway service
+    bilrost restart
+
     # Sync overlay changes to host
     bilrost sync
 

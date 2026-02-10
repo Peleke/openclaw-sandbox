@@ -223,7 +223,7 @@ limactl shell openclaw-sandbox -- ls -la /etc/openclaw/secrets.env
 
 3. Restart the gateway to pick up changes:
     ```bash
-    limactl shell openclaw-sandbox -- sudo systemctl restart openclaw-gateway
+    bilrost restart
     ```
 
 ### Re-injecting Secrets

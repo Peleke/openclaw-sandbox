@@ -5,3 +5,9 @@
   become: true
   ansible.builtin.systemd:
     daemon_reload: true
+
+- name: Restart gateway after unit change
+  become: true
+  ansible.builtin.systemd:
+    name: openclaw-gateway
+    state: restarted

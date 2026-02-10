@@ -57,8 +57,9 @@
         openclaw_config.channels.telegram is defined and
         telegram_user_id is defined and telegram_user_id | string | length > 0
 
-    # When qortex is enabled and memorySearch is not set, inject defaults so the agent
+    # When qortex is enabled, ensure memorySearch has required fields so the agent
     # sees memory_search / memory_get and uses the qortex MCP backend.
+    # Inject full block if missing; otherwise merge/patch to add enabled + qortex.command.
     - name: Inject memorySearch for qortex backend (when qortex enabled and not already set)
       ansible.builtin.set_fact:
         openclaw_config: >-
@@ -79,6 +80,30 @@
       when: >
         (qortex_enabled | default(false) | bool) and
         ((openclaw_config.agents.defaults | default({})).memorySearch is not defined)
+
+    - name: Patch memorySearch when qortex enabled and config exists but missing key fields
+      ansible.builtin.set_fact:
+        _ms: "{{ (openclaw_config.agents.defaults | default({})).memorySearch | default({}) }}"
+      when: >
+        (qortex_enabled | default(false) | bool) and
+        ((openclaw_config.agents.defaults | default({})).memorySearch is defined)
+
+    - name: Merge enabled and qortex.command into memorySearch
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': openclaw_config.agents | default({}) | combine({
+              'defaults': (openclaw_config.agents.defaults | default({})) | combine({
+                'memorySearch': _ms | combine({
+                  'enabled': true,
+                  'qortex': (_ms.qortex | default({})) | combine({
+                    'command': (_ms.qortex | default({})).command | default('qortex mcp-serve')
+                  })
+                })
+              })
+            })
+          }, recursive=true) }}
+      when: _ms is defined
 
     # When qortex is enabled, ensure memory tools are allowed (alsoAllow group:memory)
     # so the agent sees memory_search / memory_get even when tools.profile is messaging.

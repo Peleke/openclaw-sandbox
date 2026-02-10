@@ -140,4 +140,4 @@ limactl shell openclaw-sandbox -- sudo grep -c '^GH_TOKEN=' /etc/openclaw/secret
 The token might not be passing through. Check:
 
 1. `jq '.agents.defaults.sandbox.docker.env' ~/.openclaw/openclaw.json` -- should show `GH_TOKEN`
-2. The gateway must be restarted after secrets change: `sudo systemctl restart openclaw-gateway`
+2. The gateway must be restarted after secrets change: `bilrost restart`

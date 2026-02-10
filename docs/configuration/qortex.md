@@ -235,6 +235,20 @@ In the VM, `qortex` is installed via the qortex Ansible role at `~/.local/bin/qo
 - **Check config is loaded** — The gateway must receive this config when building the tool list (e.g. from `~/.openclaw/openclaw.json` in the VM).
 - **Check plugin** — memory-core must be loaded and the memory slot must be `memory-core` (default). If you set `plugins.slots.memory` to another plugin, the core memory tools are not registered.
 - **Check tool policy** — Ensure the agent’s effective tool policy allows `memory_search` / `memory_get` (e.g. via `group:memory` or an explicit allow list).
+- **Check bundled plugins dir** — The gateway resolves extensions from `OPENCLAW_BUNDLED_PLUGINS_DIR` or by walking up from `dist/`. If the env var is missing and the walk-up fails (e.g. overlay mounts), memory-core is never discovered and the tools are never registered.
+
+**Fix:** The gateway only picks up environment variables when it starts. The systemd unit sets `OPENCLAW_BUNDLED_PLUGINS_DIR`, but if the gateway was started before that was added (or before you re-provisioned), it won't have it. Re-provision: `bilrost up`. After any config change, restart the gateway: `bilrost restart`.
+
+**Quick manual fix (no reprovision):** If you already have `memorySearch` with `provider: "qortex"` but the agent still doesn't see the tools, patch the config in the VM and restart:
+
+```bash
+limactl shell openclaw-sandbox -- bash -c 'jq "
+  .agents.defaults.memorySearch.enabled = true |
+  .agents.defaults.memorySearch.qortex = ((.agents.defaults.memorySearch.qortex // {}) | .command = (.command // \"qortex mcp-serve\")) |
+  .tools.alsoAllow = ((.tools.alsoAllow // []) + [\"group:memory\"] | unique)
+" ~/.openclaw/openclaw.json > /tmp/out.json && mv /tmp/out.json ~/.openclaw/openclaw.json'
+bilrost restart
+```
 
 ### Verification (in the VM)
 
@@ -252,10 +266,11 @@ limactl shell openclaw-sandbox -- qortex --version
 
 When the sandbox is provisioned with qortex enabled (`qortex_enabled: true`, which is the default), the **gateway** role’s VM path-fix step will:
 
-- Inject `agents.defaults.memorySearch` into `~/.openclaw/openclaw.json` **only if that key is not already set**.
+- **If `memorySearch` is missing**: inject the full `agents.defaults.memorySearch` block with `enabled`, `provider`, `qortex.command`, and `qortex.feedback`.
+- **If `memorySearch` exists**: patch it to add `enabled: true` and `qortex.command: "qortex mcp-serve"` (or keep your existing `command` if set).
 - Add `group:memory` to `tools.alsoAllow` so the memory tools are allowed even when `tools.profile` is messaging (option 2).
 
-If you already have `memorySearch` or `tools.alsoAllow` in your config, existing values are kept and merged.
+Provision/re-provision uses `bilrost up` (or `bilrost up --fresh` to destroy and recreate). There is no `bilrost provision` command.
 
 ### Updating config inside the VM
 
@@ -265,8 +280,8 @@ Config in the VM lives at **`~/.openclaw/openclaw.json`** (VM user’s home). Wa
    ```bash
    limactl shell openclaw-sandbox -- bash -c 'nano ~/.openclaw/openclaw.json'
    ```
-   Or use `jq` to patch and write back. After editing, restart the gateway so it reloads config (e.g. restart the OpenClaw app, or your usual gateway restart in the VM).
+   Or use `jq` to patch and write back. After editing, restart the gateway so it reloads config: `bilrost restart`.
 
-2. **Edit on the host and re-copy** (if you use `--config` and the gateway copies from a mount): change the file in your host config dir (e.g. `~/.openclaw/openclaw.json`), then either re-run provision so the gateway role copies and re-applies fix-vm-paths, or copy the file into the VM manually and restart the gateway.
+2. **Edit on the host and re-copy** (if you use `--config` and the gateway copies from a mount): change the file in your host config dir (e.g. `~/.openclaw/openclaw.json`), then run `bilrost up` so the gateway role copies and re-applies fix-vm-paths, or copy the file into the VM manually and run `bilrost restart`.
 
-3. **Re-provision**: run `bilrost up` or `./bootstrap.sh --openclaw ~/Projects/openclaw` again so the playbook copies config from the mount and runs fix-vm-paths (injecting memorySearch and alsoAllow when qortex is enabled).
+3. **Re-provision**: run `bilrost up` (or `bilrost up --fresh` to destroy and recreate) so the playbook copies config from the mount and runs fix-vm-paths (injecting memorySearch and alsoAllow when qortex is enabled).
