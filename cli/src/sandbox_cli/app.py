@@ -125,6 +125,24 @@ def onboard() -> None:
 
 
 @app.command()
+def restart() -> None:
+    """Restart the OpenClaw gateway service in the VM."""
+    _load_and_validate(strict=False)
+    lima = LimaManager()
+    if lima.vm_status() != "Running":
+        console.print("[yellow]VM is not running.[/yellow] Run [bold]bilrost up[/bold] first.")
+        raise typer.Exit(1)
+    console.print("Restarting gateway...")
+    result = lima.shell_run("sudo systemctl restart openclaw-gateway")
+    if result.returncode != 0:
+        if result.stderr:
+            console.print(f"[red]{result.stderr.rstrip()}[/red]")
+        console.print("[red]Gateway restart failed.[/red]")
+        raise typer.Exit(result.returncode)
+    console.print("[green]Gateway restarted.[/green]")
+
+
+@app.command()
 def sync(
     dry_run: Annotated[
         bool,

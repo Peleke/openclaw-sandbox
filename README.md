@@ -211,6 +211,7 @@ Layer 2 (docker):    tool execution   → Docker container (bridge network)
 | `bilrost status` | Show VM state, profile summary, agent identity |
 | `bilrost ssh` | SSH into the VM (replaces process for TTY) |
 | `bilrost onboard` | Run the onboarding wizard inside the VM |
+| `bilrost restart` | Restart the OpenClaw gateway service in the VM |
 | `bilrost sync` | Sync overlay changes to host (with validation) |
 | `bilrost sync --dry-run` | Preview sync without applying |
 | `bilrost dashboard` | Open the gateway dashboard |
