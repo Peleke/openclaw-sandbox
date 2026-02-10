@@ -65,7 +65,7 @@ for subdir in defaults tasks templates; do
 done
 
 # Test: Required files
-for file in defaults/main.yml tasks/main.yml templates/interop.yaml.j2; do
+for file in defaults/main.yml tasks/main.yml templates/interop.yaml.j2 templates/qortex-otel.sh.j2; do
   if [[ -f "$ROLE_DIR/$file" ]]; then
     log_pass "File exists: $file"
   else
@@ -110,6 +110,7 @@ echo ""
 echo "▸ Template Validation"
 echo ""
 
+# --- interop.yaml template ---
 TEMPLATE_FILE="$ROLE_DIR/templates/interop.yaml.j2"
 if [[ -f "$TEMPLATE_FILE" ]]; then
   log_pass "interop.yaml template exists"
@@ -145,6 +146,42 @@ if [[ -f "$TEMPLATE_FILE" ]]; then
   fi
 else
   log_fail "interop.yaml template missing"
+fi
+
+echo ""
+
+# --- qortex-otel.sh template ---
+OTEL_TEMPLATE="$ROLE_DIR/templates/qortex-otel.sh.j2"
+if [[ -f "$OTEL_TEMPLATE" ]]; then
+  log_pass "qortex-otel.sh template exists"
+
+  # Check OTEL env vars
+  if grep -q "QORTEX_OTEL_ENABLED" "$OTEL_TEMPLATE"; then
+    log_pass "OTEL template exports QORTEX_OTEL_ENABLED"
+  else
+    log_fail "OTEL template missing QORTEX_OTEL_ENABLED"
+  fi
+
+  if grep -q "OTEL_EXPORTER_OTLP_ENDPOINT" "$OTEL_TEMPLATE"; then
+    log_pass "OTEL template exports OTEL_EXPORTER_OTLP_ENDPOINT"
+  else
+    log_fail "OTEL template missing OTEL_EXPORTER_OTLP_ENDPOINT"
+  fi
+
+  if grep -q "OTEL_EXPORTER_OTLP_PROTOCOL" "$OTEL_TEMPLATE"; then
+    log_pass "OTEL template exports OTEL_EXPORTER_OTLP_PROTOCOL"
+  else
+    log_fail "OTEL template missing OTEL_EXPORTER_OTLP_PROTOCOL"
+  fi
+
+  # Check it uses Ansible variables
+  if grep -q "qortex_otel_enabled\|qortex_otel_endpoint\|qortex_otel_protocol" "$OTEL_TEMPLATE"; then
+    log_pass "OTEL template uses Ansible variables"
+  else
+    log_fail "OTEL template missing Ansible variable references"
+  fi
+else
+  log_fail "qortex-otel.sh template missing"
 fi
 
 echo ""
@@ -206,6 +243,20 @@ else
   log_fail "Tasks missing qortex installation"
 fi
 
+# Test: OTEL profile.d deployment
+if grep -q "profile.d/qortex-otel.sh" "$TASKS_FILE"; then
+  log_pass "Tasks deploy OTEL profile.d script"
+else
+  log_fail "Tasks missing OTEL profile.d deployment"
+fi
+
+# Test: bash.bashrc OTEL hook
+if grep -q "qortex-otel.sh" "$TASKS_FILE" && grep -q "bash.bashrc" "$TASKS_FILE"; then
+  log_pass "Tasks hook OTEL into bash.bashrc"
+else
+  log_fail "Tasks missing bash.bashrc OTEL hook"
+fi
+
 echo ""
 
 # ============================================================
@@ -216,7 +267,7 @@ echo ""
 
 DEFAULTS_FILE="$ROLE_DIR/defaults/main.yml"
 
-for var in qortex_enabled qortex_install qortex_extras; do
+for var in qortex_enabled qortex_install qortex_extras qortex_otel_enabled qortex_otel_endpoint qortex_otel_protocol; do
   if grep -q "^$var:" "$DEFAULTS_FILE"; then
     log_pass "Default defined: $var"
   else

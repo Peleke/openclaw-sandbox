@@ -54,13 +54,17 @@
     mode: "0750"
 
 # Install uv (fast Python package manager)
+# NOTE: All uv tasks use become: false because the playbook has become: true
+# at play level, but uv writes to ~/.local and ~/.cache which must be user-owned.
 - name: Check if uv is installed
+  become: false
   ansible.builtin.command: "{{ user_home }}/.local/bin/uv --version"
   register: uv_version
   changed_when: false
   failed_when: false
 
 - name: Install uv (if not installed)
+  become: false
   when: uv_version.rc != 0
   ansible.builtin.shell: |
     curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -70,6 +74,7 @@
     HOME: "{{ user_home }}"
 
 - name: Verify uv installation
+  become: false
   ansible.builtin.command: "{{ user_home }}/.local/bin/uv --version"
   register: uv_installed_version
   changed_when: false
@@ -80,6 +85,7 @@
 
 # Install buildlog globally via uv tool
 - name: Check if buildlog is installed as uv tool
+  become: false
   ansible.builtin.shell: "{{ user_home }}/.local/bin/uv tool list | grep -q '^buildlog '"
   register: buildlog_check
   changed_when: false
@@ -88,6 +94,7 @@
     HOME: "{{ user_home }}"
 
 - name: Install buildlog via uv tool
+  become: false
   when: buildlog_check.rc != 0
   ansible.builtin.shell: |
     {{ user_home }}/.local/bin/uv tool install buildlog{% if buildlog_extras %}[{{ buildlog_extras }}]{% endif %}{% if buildlog_version %} --version {{ buildlog_version }}{% endif %}
@@ -96,6 +103,7 @@
   register: buildlog_install
 
 - name: Update buildlog if already installed
+  become: false
   when: buildlog_check.rc == 0
   ansible.builtin.shell: |
     {{ user_home }}/.local/bin/uv tool upgrade buildlog{% if buildlog_extras %}[{{ buildlog_extras }}]{% endif %}

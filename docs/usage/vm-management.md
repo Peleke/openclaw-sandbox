@@ -30,6 +30,9 @@ You don't need a full shell to run one-off commands. Pass them after `--`:
 # Check gateway status
 limactl shell openclaw-sandbox -- systemctl status openclaw-gateway
 
+# Restart the gateway (e.g. after config changes)
+bilrost restart
+
 # View overlay state
 limactl shell openclaw-sandbox -- overlay-status
 

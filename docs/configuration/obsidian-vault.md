@@ -170,4 +170,4 @@ Common causes:
 
 1. Check the bind mount is in `openclaw.json`: `jq '.agents.defaults.sandbox.docker.binds' ~/.openclaw/openclaw.json`
 2. Check `/workspace-obsidian` exists and is mounted on the VM
-3. Restart the gateway after config changes: `sudo systemctl restart openclaw-gateway`
+3. Restart the gateway after config changes: `bilrost restart`

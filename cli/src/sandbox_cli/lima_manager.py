@@ -185,6 +185,14 @@ class LimaManager:
             ],
         )
 
+    def shell_run(self, command: str) -> subprocess.CompletedProcess:
+        """Run *command* inside the VM and return the result (no process replacement)."""
+        return subprocess.run(
+            ["limactl", "shell", self.vm_name, "--", "bash", "-c", command],
+            capture_output=True,
+            text=True,
+        )
+
     # ── mount verification ───────────────────────────────────────────────
 
     def verify_mount(self, mount_point: str) -> bool:

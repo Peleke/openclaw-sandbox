@@ -8,4 +8,9 @@ qortex_enabled: true
 qortex_install: true
 
 # Optional pip extras (e.g. "anthropic" for LLM features)
-qortex_extras: ""
+qortex_extras: "mcp,vec,observability"
+
+# OpenTelemetry observability
+qortex_otel_enabled: true
+qortex_otel_endpoint: "http://host.lima.internal:4318"
+qortex_otel_protocol: "http/protobuf"

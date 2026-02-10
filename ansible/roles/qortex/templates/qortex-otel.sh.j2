@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Export OTEL env vars for qortex observability layer.
+# Sourced by: /etc/profile (login shells) and /etc/bash.bashrc (non-login shells)
+
+export QORTEX_OTEL_ENABLED={{ qortex_otel_enabled | string | lower }}
+export OTEL_EXPORTER_OTLP_ENDPOINT={{ qortex_otel_endpoint }}
+export OTEL_EXPORTER_OTLP_PROTOCOL={{ qortex_otel_protocol | default('http/protobuf') }}

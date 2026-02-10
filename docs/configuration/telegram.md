@@ -94,7 +94,7 @@ To modify the allow list after bootstrap, edit `openclaw.json` directly:
 limactl shell openclaw-sandbox -- nano ~/.openclaw/openclaw.json
 
 # Restart gateway to pick up changes
-limactl shell openclaw-sandbox -- sudo systemctl restart openclaw-gateway
+bilrost restart
 ```
 
 ## Verification Commands
