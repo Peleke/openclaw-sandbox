@@ -287,6 +287,7 @@
       WorkingDirectory={{ workspace_path }}
       Environment=HOME={{ user_home }}
       Environment=PATH={{ user_home }}/.local/bin:{{ user_home }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
+      Environment=OPENCLAW_BUNDLED_PLUGINS_DIR={{ workspace_path }}/extensions
       {% if obsidian_vault_mount.stat.exists %}
       Environment=OBSIDIAN_VAULT_PATH=/workspace-obsidian
       {% endif %}

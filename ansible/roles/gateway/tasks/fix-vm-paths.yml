@@ -57,6 +57,41 @@
         openclaw_config.channels.telegram is defined and
         telegram_user_id is defined and telegram_user_id | string | length > 0
 
+    # When qortex is enabled and memorySearch is not set, inject defaults so the agent
+    # sees memory_search / memory_get and uses the qortex MCP backend.
+    - name: Inject memorySearch for qortex backend (when qortex enabled and not already set)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': openclaw_config.agents | default({}) | combine({
+              'defaults': (openclaw_config.agents.defaults | default({})) | combine({
+                'memorySearch': {
+                  'enabled': true,
+                  'provider': 'qortex',
+                  'qortex': {
+                    'command': 'qortex mcp-serve',
+                    'feedback': true
+                  }
+                }
+              })
+            })
+          }, recursive=true) }}
+      when: >
+        (qortex_enabled | default(false) | bool) and
+        ((openclaw_config.agents.defaults | default({})).memorySearch is not defined)
+
+    # When qortex is enabled, ensure memory tools are allowed (alsoAllow group:memory)
+    # so the agent sees memory_search / memory_get even when tools.profile is messaging.
+    - name: Add group:memory to tools.alsoAllow when qortex enabled
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'tools': (openclaw_config.tools | default({})) | combine({
+              'alsoAllow': ((openclaw_config.tools.alsoAllow | default([])) + ['group:memory']) | unique | list
+            })
+          }, recursive=true) }}
+      when: qortex_enabled | default(false) | bool
+
     - name: Write fixed config
       ansible.builtin.copy:
         content: "{{ openclaw_config | to_nice_json }}"
