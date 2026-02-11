@@ -7,10 +7,38 @@ qortex_enabled: true
 # Install qortex CLI via uv tool
 qortex_install: true
 
-# Optional pip extras (e.g. "anthropic" for LLM features)
-qortex_extras: "mcp,vec,observability"
+# Pip extras — includes memgraph (neo4j Bolt driver) for persistent graph backend
+qortex_extras: "mcp,vec,memgraph,observability"
 
+# ---------------------------------------------------------------------------
+# Storage layers
+# ---------------------------------------------------------------------------
+
+# Vector backend: "sqlite" (persistent, ~/.qortex/vectors.db) or "memory" (ephemeral)
+qortex_vec: "sqlite"
+
+# Graph backend: "memgraph" (persistent, requires running Memgraph) or "memory" (ephemeral)
+qortex_graph: "memgraph"
+
+# Memgraph connection (used when qortex_graph == "memgraph")
+# host.lima.internal resolves to the Lima host, where Memgraph runs via Docker
+qortex_memgraph_host: "host.lima.internal"
+qortex_memgraph_port: 7687
+qortex_memgraph_user: "memgraph"
+qortex_memgraph_password: "memgraph"
+
+# ---------------------------------------------------------------------------
+# Teleportation factors (PPR seed weighting from feedback)
+# ---------------------------------------------------------------------------
+
+# When true, feedback-driven factors bias PPR seed weights (accepted nodes
+# get higher teleportation probability). When false (upstream default),
+# factors still accumulate but get_seed_weights() returns uniform weights.
+qortex_teleportation: true
+
+# ---------------------------------------------------------------------------
 # OpenTelemetry observability
+# ---------------------------------------------------------------------------
 qortex_otel_enabled: true
 qortex_otel_endpoint: "http://host.lima.internal:4318"
 qortex_otel_protocol: "http/protobuf"
