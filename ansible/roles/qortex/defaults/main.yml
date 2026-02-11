@@ -24,6 +24,8 @@ qortex_graph: "memgraph"
 # host.lima.internal resolves to the Lima host, where Memgraph runs via Docker
 qortex_memgraph_host: "host.lima.internal"
 qortex_memgraph_port: 7687
+qortex_memgraph_user: "memgraph"
+qortex_memgraph_password: "memgraph"
 
 # ---------------------------------------------------------------------------
 # Teleportation factors (PPR seed weighting from feedback)

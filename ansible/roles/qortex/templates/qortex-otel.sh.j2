@@ -10,6 +10,8 @@ export QORTEX_GRAPH={{ qortex_graph | default('memory') }}
 # --- Memgraph connection ---
 export MEMGRAPH_HOST={{ qortex_memgraph_host | default('localhost') }}
 export MEMGRAPH_PORT={{ qortex_memgraph_port | default(7687) }}
+export MEMGRAPH_USER={{ qortex_memgraph_user | default('') }}
+export MEMGRAPH_PASSWORD={{ qortex_memgraph_password | default('') }}
 {% endif %}
 
 # --- Teleportation factors (PPR seed weighting from feedback) ---
