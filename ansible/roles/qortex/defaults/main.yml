@@ -7,8 +7,8 @@ qortex_enabled: true
 # Install qortex CLI via uv tool
 qortex_install: true
 
-# Optional pip extras (e.g. "anthropic" for LLM features)
-qortex_extras: "mcp,vec,observability"
+# Pip extras — "vec-sqlite" provides sqlite-vec + sentence-transformers for local vector search
+qortex_extras: "mcp,vec-sqlite,observability"
 
 # OpenTelemetry observability
 qortex_otel_enabled: true

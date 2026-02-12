@@ -237,7 +237,7 @@ else
 fi
 
 # Test: qortex installation via uv
-if grep -q "uv tool install qortex" "$TASKS_FILE"; then
+if grep -q "uv tool install.*qortex" "$TASKS_FILE"; then
   log_pass "Tasks install qortex via uv tool"
 else
   log_fail "Tasks missing qortex installation"
