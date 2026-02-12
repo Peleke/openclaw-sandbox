@@ -15,6 +15,7 @@ The VM runs a UFW (Uncomplicated Firewall) with a default-deny policy in both di
 | **OUT** | 100.64.0.0/10 | * | Tailscale CGNAT range |
 | **OUT** | 41641 | UDP | Tailscale direct connections |
 | **OUT** | 123 | UDP | NTP (time synchronization) |
+| **OUT** | 4318 | TCP | OTEL export to host collector (when `qortex_otel_enabled`, to `192.168.5.2`) |
 | **IN/OUT** | lo | * | Loopback (required for local services) |
 
 **Everything else is denied and logged.**
@@ -39,6 +40,8 @@ The VM runs a UFW (Uncomplicated Firewall) with a default-deny policy in both di
 
 **NTP (UDP 123):** Required for time synchronization. TLS certificate validation fails with incorrect system time, which would break all HTTPS connections.
 
+**OTEL (TCP 4318):** When `qortex_otel_enabled` is true (default), allows the VM to send OpenTelemetry traces and metrics to the host collector at `192.168.5.2:4318` (Lima's host gateway IP). This is scoped to a single IP, not a broad outbound rule. The qortex learning pipeline uses this to export bandit selection events, observation rewards, and Prometheus metrics to host-side Grafana.
+
 ## Default Policies
 
 The firewall starts with:
@@ -60,6 +63,8 @@ This is a strict allowlist model. If a port or destination is not explicitly in 
 | `firewall_tailscale_port` | `41641` | Tailscale direct connection port |
 | `firewall_enable_logging` | `true` | Log denied packets |
 | `firewall_log_limit` | `3/min` | Rate limit for log entries |
+| `firewall_otel_host_ip` | `192.168.5.2` | Host IP for OTEL export (Lima gateway) |
+| `firewall_otel_ports` | `["4318"]` | Ports to allow for OTEL export |
 
 !!! warning "firewall_reset_on_run"
     By default, UFW is reset to a clean state on every provision run. This ensures the firewall matches the expected configuration. If you add custom rules manually, set `firewall_reset_on_run=false` to preserve them:

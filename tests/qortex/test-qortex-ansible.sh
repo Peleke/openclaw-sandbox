@@ -184,6 +184,30 @@ else
   log_fail "qortex-otel.sh template missing"
 fi
 
+# --- qortex-otel.env template (systemd format) ---
+OTEL_ENV_TEMPLATE="$ROLE_DIR/templates/qortex-otel.env.j2"
+if [[ -f "$OTEL_ENV_TEMPLATE" ]]; then
+  log_pass "qortex-otel.env template exists"
+
+  # Must NOT contain 'export' (systemd EnvironmentFile format)
+  if grep -q "^export " "$OTEL_ENV_TEMPLATE"; then
+    log_fail "OTEL env template contains 'export' (invalid for systemd EnvironmentFile)"
+  else
+    log_pass "OTEL env template has no 'export' (correct systemd format)"
+  fi
+
+  # Check all 5 required vars
+  for var in QORTEX_OTEL_ENABLED OTEL_EXPORTER_OTLP_ENDPOINT OTEL_EXPORTER_OTLP_PROTOCOL QORTEX_PROMETHEUS_ENABLED QORTEX_PROMETHEUS_PORT; do
+    if grep -q "^$var=" "$OTEL_ENV_TEMPLATE"; then
+      log_pass "OTEL env template has $var"
+    else
+      log_fail "OTEL env template missing $var"
+    fi
+  done
+else
+  log_fail "qortex-otel.env template missing"
+fi
+
 echo ""
 
 # ============================================================
@@ -257,6 +281,20 @@ else
   log_fail "Tasks missing bash.bashrc OTEL hook"
 fi
 
+# Test: systemd OTEL env file deployment
+if grep -q "Deploy qortex OTEL env for systemd services" "$TASKS_FILE"; then
+  log_pass "Tasks deploy systemd OTEL env file"
+else
+  log_fail "Tasks missing systemd OTEL env file deployment"
+fi
+
+# Test: systemd env deployed to /etc/openclaw/qortex-otel.env
+if grep -q "/etc/openclaw/qortex-otel.env" "$TASKS_FILE"; then
+  log_pass "OTEL env deployed to /etc/openclaw/qortex-otel.env"
+else
+  log_fail "OTEL env not deployed to expected path"
+fi
+
 echo ""
 
 # ============================================================
@@ -267,7 +305,7 @@ echo ""
 
 DEFAULTS_FILE="$ROLE_DIR/defaults/main.yml"
 
-for var in qortex_enabled qortex_install qortex_extras qortex_otel_enabled qortex_otel_endpoint qortex_otel_protocol; do
+for var in qortex_enabled qortex_install qortex_extras qortex_otel_enabled qortex_otel_endpoint qortex_otel_protocol qortex_prometheus_enabled qortex_prometheus_port; do
   if grep -q "^$var:" "$DEFAULTS_FILE"; then
     log_pass "Default defined: $var"
   else

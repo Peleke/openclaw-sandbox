@@ -128,6 +128,18 @@
     proto: udp
     direction: out
 
+# OTEL observability — allow VM to send metrics/traces to host collector
+- name: Allow outbound OTEL to host (port {{ item }})
+  become: true
+  community.general.ufw:
+    rule: allow
+    to_ip: "{{ firewall_otel_host_ip }}"
+    port: "{{ item }}"
+    proto: tcp
+    direction: out
+  loop: "{{ firewall_otel_ports }}"
+  when: qortex_otel_enabled | default(false) | bool
+
 # Enable logging for denied packets
 - name: Enable UFW logging
   become: true
@@ -168,6 +180,9 @@
         - HTTPS (443 TCP) - for LLM APIs
         - Tailscale ({{ firewall_tailscale_cidr }})
         - NTP (123 UDP)
+      {% if qortex_otel_enabled | default(false) | bool %}
+        - OTEL ({{ firewall_otel_ports | join(', ') }} TCP → {{ firewall_otel_host_ip }})
+      {% endif %}
 
       All other traffic is DENIED and logged.
       ============================================

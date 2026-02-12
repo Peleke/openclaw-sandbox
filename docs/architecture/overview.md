@@ -34,7 +34,7 @@ A [Lima](https://lima-vm.io/) virtual machine running Ubuntu 24.04 with Apple's 
 
 Individual tool executions (file reads/writes, shell commands, browser actions) are sandboxed inside Docker containers using **dual-container network isolation**:
 
-- **Isolated container** (`network: none`): most tool executions — air-gapped, no internet
+- **Isolated container** (`network: none`): most tool executions, air-gapped, no internet
 - **Network container** (`network: bridge`): tools matching `networkAllow` (e.g., `web_fetch`, `web_search`) or `networkExecAllow` (e.g., `gh` commands)
 - **Image**: `openclaw-sandbox:bookworm-slim` (auto-augmented with `gh` if missing)
 - **Scope**: one container pair per session
@@ -116,6 +116,7 @@ The VM firewall uses an explicit allowlist:
 | OUT | 100.64.0.0/10 | Tailscale |
 | OUT | 41641/udp | Tailscale direct |
 | OUT | 123/udp | NTP |
+| OUT | 4318/tcp | OTEL export to host (when `qortex_otel_enabled`) |
 
 All other traffic is denied and logged.
 
@@ -134,7 +135,7 @@ The Ansible playbook (`ansible/playbook.yml`) executes roles in this order:
 | 7 | `tailscale` | S4 | Set up Tailscale routing |
 | 8 | `cadence` | S7 | Deploy ambient insight pipeline |
 | 9 | `buildlog` | S8 | Install buildlog for ambient learning |
-| 10 | `qortex` | -- | Set up seed exchange directories and interop config |
+| 10 | `qortex` | -- | Install qortex CLI, deploy OTEL env, seed exchange dirs, memory + learning config |
 | 11 | `sandbox` | S10 | Build sandbox image, configure `openclaw.json` (dual-container) |
 | 12 | `sync-gate` | S9 | Deploy sync helper scripts |
 
