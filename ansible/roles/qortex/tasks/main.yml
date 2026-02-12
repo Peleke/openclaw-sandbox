@@ -88,10 +88,22 @@
   become: false
   when: qortex_install | default(true) | bool
   ansible.builtin.shell: |
-    {{ user_home }}/.local/bin/uv tool install --upgrade qortex{% if qortex_extras %}[{{ qortex_extras }}]{% endif %}
+    {{ user_home }}/.local/bin/uv tool install --upgrade --prerelease=allow qortex{% if qortex_extras %}[{{ qortex_extras }}]{% endif %}
   environment:
     HOME: "{{ user_home }}"
   register: qortex_install_result
+  failed_when: false
+
+# sqlite-vec 0.1.6 ships a 32-bit ARM binary in the aarch64 wheel — force upgrade to fixed version
+- name: Fix sqlite-vec arch mismatch (0.1.6 bug)
+  become: false
+  when: qortex_install | default(true) | bool
+  ansible.builtin.shell: |
+    {{ user_home }}/.local/bin/uv pip install --python $({{ user_home }}/.local/bin/uv tool dir)/qortex/bin/python --prerelease=allow "sqlite-vec>=0.1.7a2"
+  environment:
+    HOME: "{{ user_home }}"
+  register: sqlite_vec_fix
+  changed_when: "'Installed' in (sqlite_vec_fix.stdout | default(''))"
   failed_when: false
 
 - name: Display qortex install result
