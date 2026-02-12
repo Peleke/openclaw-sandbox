@@ -65,7 +65,7 @@ Configuration flows through three layers:
 | `sandbox_workspace_access` | `rw` | `openclaw.json` | Workspace access: `none`, `ro`, `rw` | `-e` |
 | `sandbox_image` | `openclaw-sandbox:bookworm-slim` | Docker image | Container image name | `-e` |
 | `sandbox_build_browser` | `false` | Docker image | Build browser sandbox image | `-e` |
-| `sandbox_docker_network` | `bridge` | `openclaw.json` | Network: `bridge`, `host`, `none` | `-e` |
+| `sandbox_docker_network` | `none` | `openclaw.json` | Network: `bridge`, `host`, `none` | `-e` |
 | `sandbox_setup_script` | `scripts/sandbox-setup.sh` | -- | Build script location | `-e` |
 | `sandbox_vault_path` | `/workspace-obsidian` | `openclaw.json` | Vault bind mount source | `-e` |
 | `sandbox_vault_access` | `rw` | `openclaw.json` | Vault access: `ro`, `rw` | `-e` |
@@ -100,7 +100,7 @@ Configuration flows through three layers:
 | Variable | Default | VM File | Description | How to Set |
 |----------|---------|---------|-------------|------------|
 | `cadence_enabled` | `false` | `~/.openclaw/cadence.json` | Enable cadence pipeline | `-e "cadence_enabled=true"` |
-| `cadence_vault_path` | `/mnt/obsidian` | `cadence.json` | Vault path inside VM | `-e` |
+| `cadence_vault_path` | `/workspace-obsidian` | `cadence.json` | Vault path inside VM (merged overlay mount) | `-e` |
 | `cadence_delivery_channel` | `telegram` | `cadence.json` | Delivery: `telegram`, `discord`, `log` | `-e` |
 | `cadence_telegram_chat_id` | `""` | `cadence.json` | Telegram chat ID for delivery | `-e` |
 | `cadence_llm_provider` | `anthropic` | `cadence.json` | LLM provider | `-e` |
@@ -117,6 +117,19 @@ Configuration flows through three layers:
 | `buildlog_version` | `""` (latest) | -- | Pin to a specific version | `-e "buildlog_version=0.5.0"` |
 | `buildlog_extras` | `anthropic` | -- | Python extras for LLM support | `-e` |
 | `buildlog_host_claude_md_path` | `/mnt/provision/CLAUDE.md` | `~/.claude/CLAUDE.md` | Host CLAUDE.md to copy into VM | `--claude-md` flag |
+
+### Qortex Role (`ansible/roles/qortex/defaults/main.yml`)
+
+| Variable | Default | VM File | Description | How to Set |
+|----------|---------|---------|-------------|------------|
+| `qortex_enabled` | `true` | -- | Enable qortex directory setup and interop config | `-e "qortex_enabled=false"` |
+| `qortex_install` | `true` | -- | Install qortex CLI via `uv tool install` | `-e "qortex_install=false"` |
+| `qortex_extras` | `mcp,vec-sqlite,observability` | -- | Pip extras for qortex features | `-e` |
+| `qortex_otel_enabled` | `true` | `/etc/openclaw/qortex-otel.env`, `/etc/profile.d/qortex-otel.sh` | Enable OpenTelemetry export for qortex | `-e "qortex_otel_enabled=false"` |
+| `qortex_otel_endpoint` | `http://host.lima.internal:4318` | `/etc/openclaw/qortex-otel.env` | OTEL collector endpoint (host-side) | `-e` |
+| `qortex_otel_protocol` | `http/protobuf` | `/etc/openclaw/qortex-otel.env` | OTEL exporter protocol | `-e` |
+| `qortex_prometheus_enabled` | `true` | `/etc/openclaw/qortex-otel.env` | Expose Prometheus metrics endpoint | `-e "qortex_prometheus_enabled=false"` |
+| `qortex_prometheus_port` | `9090` | `/etc/openclaw/qortex-otel.env` | Prometheus scrape port | `-e` |
 
 ### Tailscale Role (`ansible/roles/tailscale/defaults/main.yml`)
 
@@ -153,8 +166,9 @@ The playbook executes roles in this order:
 7. **tailscale** -- configure Tailscale routing through host
 8. **cadence** -- deploy ambient AI pipeline
 9. **buildlog** -- install buildlog for ambient learning capture
-10. **sandbox** -- build Docker sandbox image, configure `openclaw.json`
-11. **sync-gate** -- deploy sync-gate helper scripts
+10. **qortex** -- install qortex CLI, deploy seed exchange dirs, OTEL env, memory + learning config
+11. **sandbox** -- build Docker sandbox image, configure `openclaw.json`
+12. **sync-gate** -- deploy sync-gate helper scripts
 
 !!! tip "Re-running provisioning"
     You can re-run `./bootstrap.sh` at any time to apply configuration changes. Only Lima mount changes (affecting the VM itself) require `--delete` first. All Ansible variables can be changed with `-e` on re-provision.
@@ -172,3 +186,5 @@ The playbook executes roles in this order:
 | `~/.openclaw/openclaw.json` | OpenClaw gateway + sandbox config | gateway + sandbox roles |
 | `~/.openclaw/cadence.json` | Cadence pipeline config | cadence role |
 | `~/.claude/CLAUDE.md` | Agent instructions (buildlog + sandbox policy) | buildlog role |
+| `/etc/openclaw/qortex-otel.env` | Qortex OTEL + Prometheus env (systemd EnvironmentFile) | qortex role |
+| `/etc/profile.d/qortex-otel.sh` | Qortex OTEL env for login/non-login shells | qortex role |

@@ -455,6 +455,66 @@ If you previously used `--vault` and then re-provision without it, stale systemd
 
 ---
 
+## Overlay Stale File Handle (virtiofs + overlayfs)
+
+**Symptom**: `stat: cannot statx ... Stale file handle`, or `ls` shows `?????????` permissions on a file under `/workspace`.
+
+This happens when a file in the virtiofs lower layer (host side) is edited on the host while the overlay is mounted. The overlay dentry cache gets corrupted and the file becomes unreadable through the merged mount.
+
+**Fix**: write the file to the overlay upper dir, then remount:
+
+```bash
+# Copy the stale file into the upper dir (bypasses the corrupt dentry)
+limactl shell openclaw-sandbox -- sudo cp /mnt/openclaw/path/to/file /var/lib/openclaw/overlay/openclaw/upper/path/to/file
+
+# Remount the overlay to refresh the dentry cache
+limactl shell openclaw-sandbox -- sudo mount -o remount /workspace
+```
+
+Writing to the merged path (`/workspace/...`) does not work when the dentry is stale. You must go through the upper dir first.
+
+If multiple files are affected (e.g., after a host-side `pnpm build`), remounting alone may suffice:
+
+```bash
+limactl shell openclaw-sandbox -- sudo mount -o remount /workspace
+```
+
+### Cadence Not Detecting Vault Changes
+
+**Symptom**: Cadence (chokidar) does not pick up new or modified files in `/workspace-obsidian`.
+
+Writing directly to the overlay upper dir bypasses inotify on the merged mount. Cadence watches the merged mount, so it never sees upper-dir-only writes.
+
+**Fix**: always write to `/workspace-obsidian/` (the merged path), not to the raw upper dir at `/var/lib/openclaw/overlay/obsidian/upper/`.
+
+### Vault Sync Requires Full Disk Access (macOS)
+
+The `sync-vault.sh` launchd agent runs as a background job on the host. macOS blocks launchd agents from accessing `~/Documents/` unless Full Disk Access (FDA) is granted to `/bin/bash`.
+
+**Fix**: System Settings > Privacy & Security > Full Disk Access > add `/bin/bash`.
+
+Manual runs from the terminal work without this because the terminal app already has FDA.
+
+---
+
+## Qortex / Learning Issues
+
+### Learning Selection Falls Back to "all"
+
+**Symptom**: Gateway logs show `qortex learning select failed, falling back to all` and `excluded_count: 0` on every run.
+
+Common causes:
+
+1. **qortex connection dropped**: the shared MCP connection timed out. Restart the gateway: `bilrost restart`.
+2. **qortex not installed**: check `limactl shell openclaw-sandbox -- qortex --version`.
+3. **OTEL env not loaded**: check `limactl shell openclaw-sandbox -- cat /etc/openclaw/qortex-otel.env`.
+
+### Memory Tools Not Visible to Agent
+
+See the detailed troubleshooting in [Qortex configuration](configuration/qortex.md#if-the-agent-does-not-see-memory-tools).
+
+---
+
 ## Re-provisioning
 
 Most issues can be fixed by re-running `bootstrap.sh`. This is safe and idempotent:

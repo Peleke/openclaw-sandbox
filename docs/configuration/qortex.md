@@ -1,15 +1,17 @@
 # Qortex Interop
 
-[Qortex](https://github.com/Peleke/qortex) is a knowledge-graph-backed coordination layer for multi-agent workflows. The sandbox's qortex role sets up **seed exchange directories** and **buildlog interop** so agents running in the sandbox can emit and consume structured signals.
+[Qortex](https://github.com/Peleke/qortex) provides vector search, knowledge graph retrieval, and a Thompson Sampling bandit for the learning pipeline. The sandbox's qortex role installs the CLI, deploys environment config, and wires the gateway to use qortex as its memory and learning backend.
 
 ## What It Does
 
-The qortex role creates directory structure for signal exchange and optionally installs the qortex CLI:
+The qortex role handles six things:
 
-1. **Seed exchange directories** — `~/.qortex/seeds/{pending,processed,failed}` for structured data handoff
-2. **Signals directory** — `~/.qortex/signals/` for projection output (JSONL logs)
-3. **Buildlog interop config** — `~/.buildlog/interop.yaml` linking buildlog to qortex's seed pipeline
-4. **CLI installation** — `qortex` command via `uv tool install`
+1. **CLI installation** via `uv tool install qortex[mcp,vec-sqlite,observability]`
+2. **Seed exchange directories** for structured data handoff (`~/.qortex/seeds/{pending,processed,failed}`)
+3. **Signals directory** for projection output (`~/.qortex/signals/`)
+4. **Buildlog interop config** (`~/.buildlog/interop.yaml`) linking buildlog to qortex's seed pipeline
+5. **OTEL environment** (`/etc/openclaw/qortex-otel.env` + `/etc/profile.d/qortex-otel.sh`) so qortex exports traces and metrics to the host collector
+6. **Gateway config injection** (via `fix-vm-paths.yml`): injects `memorySearch` with `provider: "qortex"` and `learning` config into `openclaw.json` so the gateway uses qortex for both memory tools and bandit-based tool selection
 
 ## Setup
 
@@ -88,7 +90,12 @@ This enables buildlog to:
 |----------|---------|-------------|
 | `qortex_enabled` | `true` | Enable qortex directory setup and interop config |
 | `qortex_install` | `true` | Install qortex CLI via `uv tool install` |
-| `qortex_extras` | `""` | Pip extras for qortex (e.g. `"anthropic"` for LLM features) |
+| `qortex_extras` | `mcp,vec-sqlite,observability` | Pip extras for qortex (MCP server, vector search, OTEL) |
+| `qortex_otel_enabled` | `true` | Export OpenTelemetry traces and Prometheus metrics |
+| `qortex_otel_endpoint` | `http://host.lima.internal:4318` | OTEL collector endpoint on the host |
+| `qortex_otel_protocol` | `http/protobuf` | OTEL exporter wire protocol |
+| `qortex_prometheus_enabled` | `true` | Expose a Prometheus metrics endpoint for Grafana |
+| `qortex_prometheus_port` | `9090` | Port for Prometheus scraping |
 
 Override with `-e`:
 
@@ -96,16 +103,77 @@ Override with `-e`:
 # Disable qortex entirely
 ./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_enabled=false"
 
-# Install with LLM extras
-./bootstrap.sh --openclaw ~/Projects/openclaw -e 'qortex_extras=anthropic'
+# Disable OTEL export (keeps qortex but no metrics)
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_otel_enabled=false"
 ```
+
+## Observability (OTEL + Prometheus)
+
+When `qortex_otel_enabled` is true (default), the role deploys two environment files:
+
+- `/etc/openclaw/qortex-otel.env` (systemd EnvironmentFile, loaded by `openclaw-gateway.service`)
+- `/etc/profile.d/qortex-otel.sh` (shell env, sourced by login and non-login shells)
+
+Both set the same variables:
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `QORTEX_OTEL_ENABLED` | `true` | Master switch for OpenTelemetry export |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://host.lima.internal:4318` | Host-side OTEL collector |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | Wire format |
+| `QORTEX_PROMETHEUS_ENABLED` | `true` | Expose metrics endpoint |
+| `QORTEX_PROMETHEUS_PORT` | `9090` | Prometheus scrape port |
+
+The firewall role allows TCP 4318 outbound to the Lima host gateway IP (`192.168.5.2`) when OTEL is enabled. Loopback traffic for Prometheus (port 9090) is already allowed.
+
+To view traces and metrics on the host, run an OTEL collector (e.g. Grafana Alloy) listening on port 4318, and point Grafana at Prometheus on `localhost:9090` (forwarded through Lima).
+
+## Learning Pipeline
+
+The gateway uses qortex's Thompson Sampling bandit to decide which tools, skills, and context files to include in each agent run. This is configured automatically on provision.
+
+The `fix-vm-paths.yml` task injects two blocks into `openclaw.json` when `qortex_enabled` is true:
+
+**Memory search** (vector retrieval via qortex MCP):
+```json
+{
+  "agents": {
+    "defaults": {
+      "memorySearch": {
+        "enabled": true,
+        "provider": "qortex",
+        "qortex": { "command": "qortex mcp-serve", "feedback": true }
+      }
+    }
+  }
+}
+```
+
+**Learning** (bandit selection + observation):
+```json
+{
+  "learning": {
+    "enabled": true,
+    "phase": "active",
+    "tokenBudget": 8000,
+    "baselineRate": 0.10,
+    "minPulls": 20,
+    "qortex": { "command": "qortex mcp-serve" },
+    "learnerName": "openclaw"
+  }
+}
+```
+
+The gateway also gets `tools.alsoAllow: ["group:memory"]` so memory tools are available regardless of the tool profile.
+
+These injections only happen when the config is missing the relevant keys. Existing user config is preserved and patched, not overwritten.
 
 ## Standalone Use
 
-The qortex role guards `~/.buildlog` directory creation — if the buildlog role has already created it (e.g., as a Lima mount symlink), qortex skips that step. This means qortex works both:
+The qortex role guards `~/.buildlog` directory creation. If the buildlog role has already created it (e.g., as a Lima mount symlink), qortex skips that step. This means qortex works both ways:
 
-- **With buildlog** — interop.yaml is deployed into the existing `~/.buildlog/`
-- **Without buildlog** — qortex creates `~/.buildlog/` as a real directory and deploys interop.yaml
+- **With buildlog**: interop.yaml is deployed into the existing `~/.buildlog/`
+- **Without buildlog**: qortex creates `~/.buildlog/` as a real directory and deploys interop.yaml
 
 ## Verification Commands
 
@@ -146,7 +214,7 @@ bilrost up  # or ./bootstrap.sh to re-provision
 ### Memgraph ports not forwarding
 
 1. Verify `--memgraph` or `--memgraph-port` was passed at VM creation time
-2. Lima port forwards are baked at creation — to change, delete and recreate:
+2. Lima port forwards are baked at creation. To change them, delete and recreate:
 
 ```bash
 bilrost destroy -f
@@ -181,7 +249,7 @@ If an agent says something like “I don’t use memory_search, I just read MEMO
    The default memory plugin is **memory-core** (`plugins.slots.memory: "memory-core"`). Do not set the slot to another plugin if you want the built-in memory tools.
 
 4. **Tool policy**  
-   The agent’s tool policy must allow the memory tools (e.g. `group:memory` or `memory_search`, `memory_get`, `memory_feedback`). The **coding** profile includes `group:memory`; the **messaging** profile does not. So if your session uses `tools.profile: "messaging"` (common for Telegram/TUI), the memory tools can be filtered out — and visibility may change run-to-run if the effective profile or agent varies. To make memory tools consistently visible, set `tools.profile` to `"coding"` (or `"full"`), or add `tools.alsoAllow: ["group:memory"]` so memory is allowed even when the profile is messaging.
+   The agent’s tool policy must allow the memory tools (e.g. `group:memory` or `memory_search`, `memory_get`, `memory_feedback`). The **coding** profile includes `group:memory`; the **messaging** profile does not. So if your session uses `tools.profile: "messaging"` (common for Telegram/TUI), the memory tools can be filtered out, and visibility may change run-to-run if the effective profile or agent varies. To make memory tools consistently visible, set `tools.profile` to `"coding"` (or `"full"`), or add `tools.alsoAllow: ["group:memory"]` so memory is allowed even when the profile is messaging.
 
 **Example (always allow memory on all sessions):** in `openclaw.json`:
 
@@ -231,11 +299,11 @@ In the VM, `qortex` is installed via the qortex Ansible role at `~/.local/bin/qo
 
 ### If the agent does not see memory tools
 
-- **Check config key** — It must be `agents.defaults.memorySearch` (not `memory`). If you use the wrong key, OpenClaw never sees your provider setting; `provider` defaults to `"auto"` and the SQLite/embedding path runs (often OpenAI). So “we had qortex but it wasn’t being used” usually means the key was wrong or the merged config didn’t have `memorySearch`. See OpenClaw’s Zod schema or `dist/config/zod-schema.agent-runtime.js` for the exact shape.
-- **Check config is loaded** — The gateway must receive this config when building the tool list (e.g. from `~/.openclaw/openclaw.json` in the VM).
-- **Check plugin** — memory-core must be loaded and the memory slot must be `memory-core` (default). If you set `plugins.slots.memory` to another plugin, the core memory tools are not registered.
-- **Check tool policy** — Ensure the agent’s effective tool policy allows `memory_search` / `memory_get` (e.g. via `group:memory` or an explicit allow list).
-- **Check bundled plugins dir** — The gateway resolves extensions from `OPENCLAW_BUNDLED_PLUGINS_DIR` or by walking up from `dist/`. If the env var is missing and the walk-up fails (e.g. overlay mounts), memory-core is never discovered and the tools are never registered.
+- **Check config key**: it must be `agents.defaults.memorySearch` (not `memory`). If you use the wrong key, OpenClaw never sees your provider setting; `provider` defaults to `"auto"` and the SQLite/embedding path runs (often OpenAI). So “we had qortex but it wasn’t being used” usually means the key was wrong or the merged config didn’t have `memorySearch`. See OpenClaw’s Zod schema or `dist/config/zod-schema.agent-runtime.js` for the exact shape.
+- **Check config is loaded**: the gateway must receive this config when building the tool list (e.g. from `~/.openclaw/openclaw.json` in the VM).
+- **Check plugin**: memory-core must be loaded and the memory slot must be `memory-core` (default). If you set `plugins.slots.memory` to another plugin, the core memory tools are not registered.
+- **Check tool policy**: ensure the agent's effective tool policy allows `memory_search` / `memory_get` (e.g. via `group:memory` or an explicit allow list).
+- **Check bundled plugins dir**: the gateway resolves extensions from `OPENCLAW_BUNDLED_PLUGINS_DIR` or by walking up from `dist/`. If the env var is missing and the walk-up fails (e.g. overlay mounts), memory-core is never discovered and the tools are never registered.
 
 **Fix:** The gateway only picks up environment variables when it starts. The systemd unit sets `OPENCLAW_BUNDLED_PLUGINS_DIR`, but if the gateway was started before that was added (or before you re-provisioned), it won't have it. Re-provision: `bilrost up`. After any config change, restart the gateway: `bilrost restart`.
 

@@ -30,7 +30,7 @@ Cadence requires:
 ### 1. Bootstrap with vault
 
 ```bash
-# Using the Bilrost CLI (recommended) — configure vault path during `bilrost init`
+# Using the Bilrost CLI (recommended); configure vault path during `bilrost init`
 bilrost up
 
 # Using bootstrap.sh directly
@@ -138,7 +138,7 @@ Only entries with the `::publish` tag are processed by the extraction pipeline. 
 
 ## Vault Sync and the inotify Gotcha
 
-Cadence watches the vault at `/workspace-obsidian` using chokidar (inotify under the hood). This is the **merged overlay mount** — not the raw upper directory.
+Cadence watches the vault at `/workspace-obsidian` using chokidar (inotify under the hood). This is the **merged overlay mount**, not the raw upper directory.
 
 !!! warning "Always write to the merged mount"
     Writing directly to the overlay upper dir (`/var/lib/openclaw/overlay/obsidian/upper/`) bypasses inotify on the merged mount. Cadence will never see those writes. Always write to `/workspace-obsidian/` so that file watchers detect the changes.
@@ -188,19 +188,19 @@ Cadence can load custom skill definitions from this mount for use in the signal 
 
 ## Host-Side Scheduling (launchd)
 
-Several launchd plist files in `scripts/` provide host-side scheduling for macOS. **These are manual installs** — bootstrap and Ansible provision the VM but do not modify your macOS LaunchAgents.
+Several launchd plist files in `scripts/` provide host-side scheduling for macOS. **These are manual installs**. Bootstrap and Ansible provision the VM but do not modify your macOS LaunchAgents.
 
 ### Vault Sync (every 5 minutes)
 
-`scripts/com.openclaw.vault-sync.plist` — runs `sync-vault.sh` on a timer to keep the VM vault current with host-side iCloud changes.
+`scripts/com.openclaw.vault-sync.plist`: runs `sync-vault.sh` on a timer to keep the VM vault current with host-side iCloud changes.
 
 ### Cadence Host Process
 
-`scripts/com.openclaw.cadence.plist` — runs the cadence host-side coordinator.
+`scripts/com.openclaw.cadence.plist`: runs the cadence host-side coordinator.
 
 ### Dashboard Sync (every 10 minutes)
 
-`scripts/com.openclaw.dashboard-sync.plist` — runs `dashboard-sync.sh` to pull GitHub issues into Obsidian kanban boards. See [Dashboard Sync](dashboard-sync.md) for full configuration.
+`scripts/com.openclaw.dashboard-sync.plist`: runs `dashboard-sync.sh` to pull GitHub issues into Obsidian kanban boards. See [Dashboard Sync](dashboard-sync.md) for full configuration.
 
 ### Installing the plists
 
@@ -220,7 +220,7 @@ launchctl load ~/Library/LaunchAgents/com.openclaw.dashboard-sync.plist
     launchd agents cannot access `~/Documents/` without Full Disk Access (FDA) for `/bin/bash`. Grant FDA to `/bin/bash` in **System Settings > Privacy & Security > Full Disk Access**. Manual script runs from Terminal work fine because Terminal typically has FDA.
 
 !!! note "Not handled by bootstrap"
-    All host-side launchd plists are manual installs. Bootstrap provisions the **VM** via Ansible — it does not install macOS LaunchAgents. This is by design: host-side scheduling is a user choice, not a provisioning step.
+    All host-side launchd plists are manual installs. Bootstrap provisions the **VM** via Ansible; it does not install macOS LaunchAgents. This is by design: host-side scheduling is a user choice, not a provisioning step.
 
 ## Ansible Variables
 
@@ -229,7 +229,7 @@ These variables can be set at bootstrap time with `-e`:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `cadence_enabled` | `false` | Enable the cadence pipeline |
-| `cadence_vault_path` | `/mnt/obsidian` | Vault path inside VM |
+| `cadence_vault_path` | `/workspace-obsidian` | Vault path inside VM (merged overlay mount) |
 | `cadence_delivery_channel` | `telegram` | Delivery channel |
 | `cadence_telegram_chat_id` | `""` | Telegram chat ID |
 | `cadence_llm_provider` | `anthropic` | LLM provider |
