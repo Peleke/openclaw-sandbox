@@ -84,21 +84,11 @@
   environment:
     HOME: "{{ user_home }}"
 
-- name: Check if qortex is installed as uv tool
+- name: Install or upgrade qortex via uv tool
   become: false
   when: qortex_install | default(true) | bool
-  ansible.builtin.shell: "{{ user_home }}/.local/bin/uv tool list | grep -q '^qortex '"
-  register: qortex_check
-  changed_when: false
-  failed_when: false
-  environment:
-    HOME: "{{ user_home }}"
-
-- name: Install qortex via uv tool
-  become: false
-  when: qortex_install | default(true) | bool and (qortex_check.rc | default(1)) != 0
   ansible.builtin.shell: |
-    {{ user_home }}/.local/bin/uv tool install qortex{% if qortex_extras %}[{{ qortex_extras }}]{% endif %}
+    {{ user_home }}/.local/bin/uv tool install --upgrade qortex{% if qortex_extras %}[{{ qortex_extras }}]{% endif %}
   environment:
     HOME: "{{ user_home }}"
   register: qortex_install_result
