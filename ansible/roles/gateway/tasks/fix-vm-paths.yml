@@ -138,6 +138,39 @@
           }, recursive=true) }}
       when: qortex_enabled | default(false) | bool
 
+    # Ensure vault bind mount persists in sandbox config.
+    # The sandbox role adds this during initial provisioning, but if the vault
+    # overlay wasn't mounted yet or config was rewritten, re-add it here so
+    # the agent can see the vault inside Docker sandbox containers.
+    - name: Check if vault overlay is mounted
+      ansible.builtin.stat:
+        path: "{{ sandbox_vault_path | default('/workspace-obsidian') }}"
+      register: vault_overlay_check
+
+    - name: Ensure vault bind mount in sandbox docker config
+      when: vault_overlay_check.stat.exists
+      block:
+        - name: Read existing sandbox config
+          ansible.builtin.set_fact:
+            _vault_bind: "{{ (sandbox_vault_path | default('/workspace-obsidian')) ~ ':' ~ (sandbox_vault_path | default('/workspace-obsidian')) ~ ':' ~ (sandbox_vault_access | default('rw')) }}"
+            _sandbox_cfg: "{{ ((openclaw_config.agents | default({})).defaults | default({})).sandbox | default({}) }}"
+
+        - name: Add vault bind mount if not already present
+          ansible.builtin.set_fact:
+            openclaw_config: >-
+              {{ openclaw_config | combine({
+                'agents': (openclaw_config.agents | default({})) | combine({
+                  'defaults': ((openclaw_config.agents | default({})).defaults | default({})) | combine({
+                    'sandbox': _sandbox_cfg | combine({
+                      'docker': (_sandbox_cfg.docker | default({})) | combine({
+                        'binds': ((_sandbox_cfg.docker | default({})).binds | default([])) + [_vault_bind]
+                      })
+                    })
+                  })
+                })
+              }, recursive=true) }}
+          when: _vault_bind not in ((_sandbox_cfg.docker | default({})).binds | default([]))
+
     - name: Write fixed config
       ansible.builtin.copy:
         content: "{{ openclaw_config | to_nice_json }}"
@@ -164,4 +197,9 @@
           - allowFrom: [{{ telegram_user_id }}] (pre-seeded owner)
           {% else %}
           - allowFrom: not pre-seeded (approve via: claw pair approve <code>)
+          {% endif %}
+          {% if vault_overlay_check.stat.exists | default(false) %}
+          - vault bind: {{ sandbox_vault_path | default('/workspace-obsidian') }} (rw in sandbox containers)
+          {% else %}
+          - vault bind: skipped (no vault overlay at {{ sandbox_vault_path | default('/workspace-obsidian') }})
           {% endif %}

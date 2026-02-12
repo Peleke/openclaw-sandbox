@@ -306,6 +306,34 @@ if [[ -f "$FIX_PATHS_FILE" ]]; then
     log_fail "Learning injection must be gated on qortex_enabled"
   fi
 
+  # Test: Vault bind mount check exists in fix-vm-paths
+  if grep -q "Check if vault overlay is mounted" "$FIX_PATHS_FILE"; then
+    log_pass "fix-vm-paths checks for vault overlay mount"
+  else
+    log_fail "fix-vm-paths missing vault overlay mount check"
+  fi
+
+  # Test: Vault bind mount uses sandbox_vault_path with default
+  if grep -q 'sandbox_vault_path | default' "$FIX_PATHS_FILE"; then
+    log_pass "Vault bind uses sandbox_vault_path with default guard"
+  else
+    log_fail "Vault bind should use sandbox_vault_path with default guard"
+  fi
+
+  # Test: Vault bind mount is idempotent (checks before adding)
+  if grep -q '_vault_bind not in' "$FIX_PATHS_FILE"; then
+    log_pass "Vault bind mount is idempotent (checks before adding)"
+  else
+    log_fail "Vault bind mount should check for duplicates before adding"
+  fi
+
+  # Test: Vault bind mount uses safe nested access with defaults
+  if grep -q '_sandbox_cfg.docker | default' "$FIX_PATHS_FILE"; then
+    log_pass "Vault bind uses safe nested access with defaults"
+  else
+    log_fail "Vault bind should use safe nested access to avoid KeyError"
+  fi
+
   # Test: Workspace directory is world-readable (Docker sandbox containers need this)
   if grep -A6 "Create workspace directory" "$FIX_PATHS_FILE" | grep -q '0755'; then
     log_pass "Workspace directory mode 0755 (Docker sandbox can read it)"
