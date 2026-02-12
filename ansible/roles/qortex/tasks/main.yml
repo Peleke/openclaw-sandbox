@@ -122,6 +122,16 @@
     group: root
     mode: "0644"
 
+- name: Deploy qortex OTEL env for systemd services
+  when: qortex_otel_enabled | default(false) | bool
+  become: true
+  ansible.builtin.template:
+    src: qortex-otel.env.j2
+    dest: /etc/openclaw/qortex-otel.env
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Hook qortex OTEL into bash.bashrc for non-login shells
   when: qortex_otel_enabled | default(false) | bool
   become: true

@@ -5,3 +5,5 @@
 export QORTEX_OTEL_ENABLED={{ qortex_otel_enabled | string | lower }}
 export OTEL_EXPORTER_OTLP_ENDPOINT={{ qortex_otel_endpoint }}
 export OTEL_EXPORTER_OTLP_PROTOCOL={{ qortex_otel_protocol | default('http/protobuf') }}
+export QORTEX_PROMETHEUS_ENABLED={{ qortex_prometheus_enabled | default(false) | string | lower }}
+export QORTEX_PROMETHEUS_PORT={{ qortex_prometheus_port | default(9090) }}

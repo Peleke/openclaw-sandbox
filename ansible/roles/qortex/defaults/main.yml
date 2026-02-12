@@ -14,3 +14,7 @@ qortex_extras: "mcp,vec-sqlite,observability"
 qortex_otel_enabled: true
 qortex_otel_endpoint: "http://host.lima.internal:4318"
 qortex_otel_protocol: "http/protobuf"
+
+# Prometheus metrics endpoint (exposed by qortex for Grafana scraping)
+qortex_prometheus_enabled: true
+qortex_prometheus_port: 9090

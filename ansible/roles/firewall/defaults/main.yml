@@ -37,3 +37,8 @@ firewall_enable_logging: true
 
 # Log rate limit (prevent log flooding)
 firewall_log_limit: "3/min"
+
+# OTEL observability — allow VM to send metrics/traces to host collector
+firewall_otel_host_ip: "192.168.5.2"
+firewall_otel_ports:
+  - "4318"

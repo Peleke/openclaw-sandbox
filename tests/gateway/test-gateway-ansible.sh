@@ -239,6 +239,13 @@ else
   log_fail "bootstrap.sh not found"
 fi
 
+# Test: Gateway systemd unit references qortex OTEL env file
+if grep -q "EnvironmentFile=-/etc/openclaw/qortex-otel.env" "$TASKS_FILE"; then
+  log_pass "Gateway unit loads qortex OTEL env file"
+else
+  log_fail "Gateway unit missing EnvironmentFile for qortex-otel.env"
+fi
+
 echo ""
 
 # ============================================================
@@ -262,6 +269,41 @@ if [[ -f "$FIX_PATHS_FILE" ]]; then
     log_fail "fix-vm-paths references mount directly (should use local copy)"
   else
     log_pass "fix-vm-paths does not reference mount path directly"
+  fi
+
+  # Test: Learning config injection when qortex enabled
+  if grep -q "Inject learning config for qortex backend" "$FIX_PATHS_FILE"; then
+    log_pass "Learning config injection task exists"
+  else
+    log_fail "Missing learning config injection (learning system dead without it)"
+  fi
+
+  # Test: Learning config sets phase to active (enables selection + observation)
+  if grep -A20 "Inject learning config for qortex" "$FIX_PATHS_FILE" | grep -q "'phase': 'active'"; then
+    log_pass "Learning phase set to 'active' (enables bandit selection + observation)"
+  else
+    log_fail "Learning phase must be 'active' — 'passive' disables the entire system"
+  fi
+
+  # Test: Learning config has enabled: true
+  if grep -A20 "Inject learning config for qortex" "$FIX_PATHS_FILE" | grep -q "'enabled': true"; then
+    log_pass "Learning config has enabled: true"
+  else
+    log_fail "Learning config missing enabled: true"
+  fi
+
+  # Test: Learning config has qortex.command
+  if grep -A20 "Inject learning config for qortex" "$FIX_PATHS_FILE" | grep -q "'command': 'qortex mcp-serve'"; then
+    log_pass "Learning config has qortex.command (shared MCP connection)"
+  else
+    log_fail "Learning config missing qortex.command"
+  fi
+
+  # Test: Learning config gated on qortex_enabled
+  if grep -A25 "Inject learning config for qortex" "$FIX_PATHS_FILE" | grep -q "qortex_enabled | default(false) | bool"; then
+    log_pass "Learning injection gated on qortex_enabled"
+  else
+    log_fail "Learning injection must be gated on qortex_enabled"
   fi
 
   # Test: Workspace directory is world-readable (Docker sandbox containers need this)

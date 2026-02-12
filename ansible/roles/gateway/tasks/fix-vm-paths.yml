@@ -117,6 +117,27 @@
           }, recursive=true) }}
       when: qortex_enabled | default(false) | bool
 
+    # When qortex is enabled, inject learning config so the bandit system
+    # (selectViaQortex / observeRunOutcomes) is live.  Shares the same
+    # qortex MCP connection that memorySearch uses — no extra process.
+    - name: Inject learning config for qortex backend (when qortex enabled)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'learning': {
+              'enabled': true,
+              'phase': 'active',
+              'tokenBudget': 8000,
+              'baselineRate': 0.10,
+              'minPulls': 5,
+              'qortex': {
+                'command': 'qortex mcp-serve'
+              },
+              'learnerName': 'openclaw'
+            }
+          }, recursive=true) }}
+      when: qortex_enabled | default(false) | bool
+
     - name: Write fixed config
       ansible.builtin.copy:
         content: "{{ openclaw_config | to_nice_json }}"
