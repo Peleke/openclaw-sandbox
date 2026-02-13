@@ -138,6 +138,94 @@
           }, recursive=true) }}
       when: qortex_enabled | default(false) | bool
 
+    # Ensure vault bind mount persists in sandbox config.
+    # The sandbox role adds this during initial provisioning, but if the vault
+    # overlay wasn't mounted yet or config was rewritten, re-add it here so
+    # the agent can see the vault inside Docker sandbox containers.
+    - name: Check if vault overlay is mounted
+      ansible.builtin.stat:
+        path: "{{ sandbox_vault_path | default('/workspace-obsidian') }}"
+      register: vault_overlay_check
+
+    - name: Ensure vault bind mount in sandbox docker config
+      when: vault_overlay_check.stat.exists
+      block:
+        - name: Read existing sandbox config
+          ansible.builtin.set_fact:
+            _vault_bind: "{{ (sandbox_vault_path | default('/workspace-obsidian')) ~ ':' ~ (sandbox_vault_path | default('/workspace-obsidian')) ~ ':' ~ (sandbox_vault_access | default('rw')) }}"
+            _sandbox_cfg: "{{ ((openclaw_config.agents | default({})).defaults | default({})).sandbox | default({}) }}"
+
+        - name: Add vault bind mount if not already present
+          ansible.builtin.set_fact:
+            openclaw_config: >-
+              {{ openclaw_config | combine({
+                'agents': (openclaw_config.agents | default({})) | combine({
+                  'defaults': ((openclaw_config.agents | default({})).defaults | default({})) | combine({
+                    'sandbox': _sandbox_cfg | combine({
+                      'docker': (_sandbox_cfg.docker | default({})) | combine({
+                        'binds': ((_sandbox_cfg.docker | default({})).binds | default([])) + [_vault_bind]
+                      })
+                    })
+                  })
+                })
+              }, recursive=true) }}
+          when: _vault_bind not in ((_sandbox_cfg.docker | default({})).binds | default([]))
+
+    # Ensure source repo bind mount persists in sandbox config.
+    - name: Check if OpenClaw source is mounted
+      ansible.builtin.stat:
+        path: "{{ sandbox_source_path | default('/mnt/openclaw') }}"
+      register: source_mount_check
+
+    - name: Ensure source repo bind mount in sandbox docker config
+      when: source_mount_check.stat.exists
+      block:
+        - name: Read existing sandbox config for source bind
+          ansible.builtin.set_fact:
+            _source_bind: "{{ (sandbox_source_path | default('/mnt/openclaw')) ~ ':' ~ (sandbox_source_mount | default('/openclaw-source')) ~ ':' ~ (sandbox_source_access | default('ro')) }}"
+            _sandbox_cfg_src: "{{ ((openclaw_config.agents | default({})).defaults | default({})).sandbox | default({}) }}"
+
+        - name: Add source repo bind mount if not already present
+          ansible.builtin.set_fact:
+            openclaw_config: >-
+              {{ openclaw_config | combine({
+                'agents': (openclaw_config.agents | default({})) | combine({
+                  'defaults': ((openclaw_config.agents | default({})).defaults | default({})) | combine({
+                    'sandbox': _sandbox_cfg_src | combine({
+                      'docker': (_sandbox_cfg_src.docker | default({})) | combine({
+                        'binds': ((_sandbox_cfg_src.docker | default({})).binds | default([])) + [_source_bind]
+                      })
+                    })
+                  })
+                })
+              }, recursive=true) }}
+          when: _source_bind not in ((_sandbox_cfg_src.docker | default({})).binds | default([]))
+
+    # Inject path discovery env vars so the agent knows what's mounted
+    - name: Build discovery env vars
+      ansible.builtin.set_fact:
+        _discovery_env: >-
+          {{ {}
+            | combine({'OBSIDIAN_VAULT_PATH': sandbox_vault_path | default('/workspace-obsidian')} if (vault_overlay_check.stat.exists | default(false)) else {})
+            | combine({'OPENCLAW_SOURCE_PATH': sandbox_source_mount | default('/openclaw-source')} if (source_mount_check.stat.exists | default(false)) else {})
+          }}
+
+    - name: Merge discovery env vars into sandbox docker config
+      when: _discovery_env | default({}) | length > 0
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': (openclaw_config.agents | default({})) | combine({
+              'defaults': ((openclaw_config.agents | default({})).defaults | default({})) | combine({
+                'sandbox': (((openclaw_config.agents | default({})).defaults | default({})).sandbox | default({})) | combine({
+                  'docker': ((((openclaw_config.agents | default({})).defaults | default({})).sandbox | default({})).docker | default({})) | combine({
+                    'env': (((((openclaw_config.agents | default({})).defaults | default({})).sandbox | default({})).docker | default({})).env | default({})) | combine(_discovery_env)
+                  })
+                })
+              })
+            })
+          }, recursive=true) }}
+
     - name: Write fixed config
       ansible.builtin.copy:
         content: "{{ openclaw_config | to_nice_json }}"
@@ -164,4 +252,17 @@
           - allowFrom: [{{ telegram_user_id }}] (pre-seeded owner)
           {% else %}
           - allowFrom: not pre-seeded (approve via: claw pair approve <code>)
+          {% endif %}
+          {% if vault_overlay_check.stat.exists | default(false) %}
+          - vault bind: {{ sandbox_vault_path | default('/workspace-obsidian') }} (rw in sandbox containers)
+          {% else %}
+          - vault bind: skipped (no vault overlay at {{ sandbox_vault_path | default('/workspace-obsidian') }})
+          {% endif %}
+          {% if source_mount_check.stat.exists | default(false) %}
+          - source bind: {{ sandbox_source_path | default('/mnt/openclaw') }} -> {{ sandbox_source_mount | default('/openclaw-source') }} (ro)
+          {% else %}
+          - source bind: skipped (no source at {{ sandbox_source_path | default('/mnt/openclaw') }})
+          {% endif %}
+          {% if _discovery_env | default({}) | length > 0 %}
+          - discovery env: {{ _discovery_env | to_json }}
           {% endif %}

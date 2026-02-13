@@ -11,3 +11,16 @@
   ansible.builtin.systemd:
     name: openclaw-gateway
     state: restarted
+
+- name: Restart docker
+  become: true
+  ansible.builtin.systemd:
+    name: docker
+    state: restarted
+    daemon_reload: true
+
+- name: Restart journald
+  become: true
+  ansible.builtin.systemd:
+    name: systemd-journald
+    state: restarted
