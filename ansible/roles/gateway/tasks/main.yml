@@ -263,6 +263,91 @@
     path: /mnt/obsidian
   register: obsidian_vault_mount
 
+# Log rotation for gateway and overlay-watcher logs (#83)
+- name: Ensure /var/log/openclaw directory exists
+  become: true
+  ansible.builtin.file:
+    path: /var/log/openclaw
+    state: directory
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: "0755"
+
+- name: Deploy logrotate config for OpenClaw logs
+  become: true
+  ansible.builtin.copy:
+    dest: /etc/logrotate.d/openclaw
+    mode: "0644"
+    content: |
+      /var/log/openclaw/*.log {
+          daily
+          rotate 7
+          compress
+          delaycompress
+          missingok
+          notifempty
+          copytruncate
+          maxsize 50M
+      }
+
+# Cap Docker container log sizes (json-file driver)
+- name: Ensure /etc/docker directory exists
+  become: true
+  ansible.builtin.file:
+    path: /etc/docker
+    state: directory
+    mode: "0755"
+
+- name: Check if Docker daemon.json exists
+  ansible.builtin.stat:
+    path: /etc/docker/daemon.json
+  register: docker_daemon_json
+
+- name: Read existing Docker daemon.json
+  when: docker_daemon_json.stat.exists
+  ansible.builtin.slurp:
+    src: /etc/docker/daemon.json
+  register: docker_daemon_content
+  become: true
+
+- name: Parse existing Docker daemon.json
+  when: docker_daemon_json.stat.exists
+  ansible.builtin.set_fact:
+    docker_daemon_config: "{{ docker_daemon_content.content | b64decode | from_json }}"
+
+- name: Set default Docker daemon config
+  when: not docker_daemon_json.stat.exists
+  ansible.builtin.set_fact:
+    docker_daemon_config: {}
+
+- name: Merge log rotation into Docker daemon.json
+  ansible.builtin.set_fact:
+    docker_daemon_config: >-
+      {{ docker_daemon_config | combine({
+        'log-driver': 'json-file',
+        'log-opts': {
+          'max-size': '50m',
+          'max-file': '3'
+        }
+      }, recursive=true) }}
+
+- name: Write Docker daemon.json
+  become: true
+  ansible.builtin.copy:
+    content: "{{ docker_daemon_config | to_nice_json }}"
+    dest: /etc/docker/daemon.json
+    mode: "0644"
+  notify: Restart docker
+
+# Also cap journald to prevent unbounded growth
+- name: Configure journald size limit
+  become: true
+  ansible.builtin.lineinfile:
+    path: /etc/systemd/journald.conf
+    regexp: '^#?SystemMaxUse='
+    line: 'SystemMaxUse=200M'
+  notify: Restart journald
+
 # Create systemd service for gateway
 - name: Create gateway systemd service
   become: true
