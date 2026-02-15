@@ -1,0 +1,23 @@
+---
+# Memgraph Role Defaults
+# Persistent graph backend for qortex PPR + credit propagation
+
+# Master switch — opt-in (requires docker_enabled)
+memgraph_enabled: false
+
+# Container image
+memgraph_image: "memgraph/memgraph-mage:latest"
+
+# Ports
+memgraph_bolt_port: 7687
+memgraph_monitoring_port: 7444
+
+# Auth
+memgraph_user: "memgraph"
+memgraph_password: "memgraph"
+
+# Persistent data directory on the VM
+memgraph_data_dir: "/var/lib/memgraph"
+
+# Docker-compose project directory
+memgraph_compose_dir: "/opt/memgraph"

@@ -7,3 +7,16 @@ export OTEL_EXPORTER_OTLP_ENDPOINT={{ qortex_otel_endpoint }}
 export OTEL_EXPORTER_OTLP_PROTOCOL={{ qortex_otel_protocol | default('http/protobuf') }}
 export QORTEX_PROMETHEUS_ENABLED={{ qortex_prometheus_enabled | default(false) | string | lower }}
 export QORTEX_PROMETHEUS_PORT={{ qortex_prometheus_port | default(9090) }}
+# Skip HuggingFace network verification at runtime — model is pre-cached during provisioning
+export HF_HUB_OFFLINE=1
+{% if memgraph_enabled | default(false) | bool %}
+# Memgraph persistent graph backend
+export QORTEX_GRAPH=memgraph
+export MEMGRAPH_HOST={{ memgraph_host | default('localhost') }}
+export MEMGRAPH_PORT={{ memgraph_bolt_port | default(7687) }}
+export MEMGRAPH_USER={{ memgraph_user | default('memgraph') }}
+export MEMGRAPH_PASSWORD={{ memgraph_password | default('memgraph') }}
+{% endif %}
+# Feature flags (override flags.py defaults)
+export QORTEX_TELEPORTATION={{ qortex_teleportation | default(memgraph_enabled | default(false)) | string | lower }}
+export QORTEX_CREDIT_PROPAGATION={{ qortex_credit_propagation | default(memgraph_enabled | default(false)) | string | lower }}

@@ -84,11 +84,15 @@
   environment:
     HOME: "{{ user_home }}"
 
+- name: Set effective qortex extras (append memgraph when enabled)
+  ansible.builtin.set_fact:
+    _qortex_effective_extras: "{{ qortex_extras }}{{ ',memgraph' if (memgraph_enabled | default(false) | bool) else '' }}"
+
 - name: Install or upgrade qortex via uv tool
   become: false
   when: qortex_install | default(true) | bool
   ansible.builtin.shell: |
-    {{ user_home }}/.local/bin/uv tool install --upgrade --prerelease=allow qortex{% if qortex_extras %}[{{ qortex_extras }}]{% endif %}
+    {{ user_home }}/.local/bin/uv tool install --upgrade --prerelease=allow qortex{% if _qortex_effective_extras %}[{{ _qortex_effective_extras }}]{% endif %}
   environment:
     HOME: "{{ user_home }}"
   register: qortex_install_result
@@ -154,12 +158,14 @@
       Interop config: ~/.buildlog/interop.yaml
       {% if qortex_install | default(true) | bool %}
       CLI: qortex (installed via uv tool)
-      Extras: {{ qortex_extras | default('none') }}
+      Extras: {{ _qortex_effective_extras | default(qortex_extras) | default('none') }}
       {% endif %}
       {% if qortex_otel_enabled | default(false) | bool %}
       OTEL: enabled → {{ qortex_otel_endpoint }}
       {% endif %}
       {% if memgraph_enabled | default(false) | bool %}
-      Memgraph ports forwarded (7687, 3000, 7444)
+      Graph: memgraph (bolt://localhost:{{ memgraph_bolt_port | default(7687) }})
+      Teleportation: enabled
+      Credit propagation: enabled
       {% endif %}
       ════════════════════════════════════════════════════════

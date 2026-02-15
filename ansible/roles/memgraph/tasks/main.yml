@@ -1,0 +1,81 @@
+---
+# Memgraph Role
+# Deploys a persistent Memgraph container for qortex graph backend
+
+- name: Skip Memgraph (memgraph_enabled is false)
+  when: not (memgraph_enabled | default(false) | bool)
+  ansible.builtin.debug:
+    msg: "Memgraph installation skipped (memgraph_enabled=false)"
+
+- name: Deploy Memgraph
+  when: memgraph_enabled | default(false) | bool
+  block:
+    # Verify Docker is available (role depends on docker role)
+    - name: Verify Docker is available
+      ansible.builtin.command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: docker_check.rc != 0
+
+    # Create compose project directory
+    - name: Create Memgraph compose directory
+      become: true
+      ansible.builtin.file:
+        path: "{{ memgraph_compose_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # Deploy docker-compose.yml
+    - name: Deploy Memgraph docker-compose.yml
+      become: true
+      ansible.builtin.template:
+        src: docker-compose.yml.j2
+        dest: "{{ memgraph_compose_dir }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart memgraph
+
+    # Start Memgraph
+    - name: Start Memgraph container
+      become: true
+      ansible.builtin.shell: |
+        docker compose -f {{ memgraph_compose_dir }}/docker-compose.yml up -d
+      args:
+        chdir: "{{ memgraph_compose_dir }}"
+      register: memgraph_up
+      changed_when: "'Started' in memgraph_up.stderr or 'Creating' in memgraph_up.stderr"
+
+    # Health check — wait for Bolt port
+    - name: Wait for Memgraph Bolt port
+      ansible.builtin.wait_for:
+        host: localhost
+        port: "{{ memgraph_bolt_port }}"
+        timeout: 60
+        delay: 5
+        state: started
+
+    # Verify container is healthy
+    - name: Check Memgraph container status
+      ansible.builtin.shell: |
+        docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}' qortex-memgraph 2>/dev/null || echo "no-healthcheck"
+      register: memgraph_health
+      changed_when: false
+      retries: 6
+      delay: 10
+      until: memgraph_health.stdout == "healthy" or memgraph_health.stdout == "no-healthcheck"
+
+    - name: Memgraph deployment complete
+      ansible.builtin.debug:
+        msg: |
+          ════════════════════════════════════════════════════════
+          Memgraph deployed!
+
+          Bolt:       localhost:{{ memgraph_bolt_port }}
+          Monitoring: localhost:{{ memgraph_monitoring_port }}
+          Compose:    {{ memgraph_compose_dir }}/docker-compose.yml
+          Data:       Docker volume memgraph_data
+          Health:     {{ memgraph_health.stdout | default('unknown') }}
+          ════════════════════════════════════════════════════════
