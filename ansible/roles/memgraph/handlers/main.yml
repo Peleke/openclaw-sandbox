@@ -1,0 +1,7 @@
+---
+- name: Restart memgraph
+  become: true
+  ansible.builtin.shell: |
+    docker compose -f {{ memgraph_compose_dir }}/docker-compose.yml restart memgraph
+  args:
+    chdir: "{{ memgraph_compose_dir }}"

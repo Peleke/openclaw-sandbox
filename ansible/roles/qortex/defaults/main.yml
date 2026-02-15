@@ -8,6 +8,7 @@ qortex_enabled: true
 qortex_install: true
 
 # Pip extras — "vec-sqlite" provides sqlite-vec + sentence-transformers for local vector search
+# When memgraph_enabled, the memgraph extra (neo4j driver) is appended automatically
 qortex_extras: "mcp,vec-sqlite,observability"
 
 # OpenTelemetry observability

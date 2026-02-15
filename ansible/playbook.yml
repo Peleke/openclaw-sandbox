@@ -57,6 +57,11 @@
       tags: [docker]
       when: docker_enabled | default(true) | bool
 
+    # Memgraph persistent graph backend (after docker, before qortex)
+    - role: memgraph
+      tags: [memgraph]
+      when: memgraph_enabled | default(false) | bool
+
     # GitHub CLI (after docker, before gateway — gh available when gateway starts)
     - role: gh-cli
       tags: [gh-cli]

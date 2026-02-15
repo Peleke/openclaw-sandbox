@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+# Memgraph persistent graph backend for qortex
+services:
+  memgraph:
+    image: {{ memgraph_image }}
+    container_name: qortex-memgraph
+    ports:
+      - "{{ memgraph_bolt_port }}:7687"   # Bolt protocol
+      - "{{ memgraph_monitoring_port }}:7444"  # Monitoring
+    volumes:
+      - memgraph_data:{{ memgraph_data_dir }}
+      - memgraph_log:/var/log/memgraph
+    environment:
+      - MEMGRAPH_USER={{ memgraph_user }}
+      - MEMGRAPH_PASSWORD={{ memgraph_password }}
+    command: ["--also-log-to-stderr"]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',7687)); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  memgraph_data:
+  memgraph_log:
