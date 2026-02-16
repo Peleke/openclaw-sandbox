@@ -1,12 +1,11 @@
 # {{ ansible_managed }}
 # Memgraph persistent graph backend for qortex
+# Uses host networking — Docker bridge NAT breaks Bolt protocol on Lima VMs
 services:
   memgraph:
     image: {{ memgraph_image }}
     container_name: qortex-memgraph
-    ports:
-      - "{{ memgraph_bolt_port }}:7687"   # Bolt protocol
-      - "{{ memgraph_monitoring_port }}:7444"  # Monitoring
+    network_mode: host
     volumes:
       - memgraph_data:{{ memgraph_data_dir }}
       - memgraph_log:/var/log/memgraph
