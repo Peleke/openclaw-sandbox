@@ -21,6 +21,20 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+{% if memgraph_lab_enabled | default(true) %}
+  memgraph-lab:
+    image: {{ memgraph_lab_image | default('memgraph/lab:latest') }}
+    container_name: qortex-memgraph-lab
+    network_mode: host
+    environment:
+      - QUICK_CONNECT_MG_HOST=localhost
+      - QUICK_CONNECT_MG_PORT={{ memgraph_bolt_port }}
+    depends_on:
+      memgraph:
+        condition: service_healthy
+    restart: unless-stopped
+{% endif %}
+
 volumes:
   memgraph_data:
   memgraph_log:

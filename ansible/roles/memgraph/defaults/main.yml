@@ -19,5 +19,10 @@ memgraph_password: "memgraph"
 # Persistent data directory on the VM
 memgraph_data_dir: "/var/lib/memgraph"
 
+# Memgraph Lab (graph visualization UI)
+memgraph_lab_enabled: true
+memgraph_lab_image: "memgraph/lab:latest"
+memgraph_lab_port: 3000
+
 # Docker-compose project directory
 memgraph_compose_dir: "/opt/memgraph"
