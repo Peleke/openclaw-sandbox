@@ -7,6 +7,7 @@ set -euo pipefail
 
 VM_NAME="openclaw-sandbox"
 SKILLS_SRC="/Users/peleke/Documents/Projects/skills/skills/custom"
+# shellcheck disable=SC2016 -- $HOME must expand inside the VM, not on the host
 TARGET_DIR="$(limactl shell "$VM_NAME" -- bash -c 'echo $HOME' 2>/dev/null | tr -d '\r')/.openclaw/skills-extra"
 
 # Verify source exists

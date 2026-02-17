@@ -21,7 +21,6 @@ VM_NAME="openclaw-sandbox"
 
 # Overlay paths in VM
 UPPER="/var/lib/openclaw/overlay/openclaw/upper"
-WORKSPACE="/workspace"
 
 # Validation settings
 MAX_FILE_SIZE=$((10 * 1024 * 1024))  # 10MB per file
@@ -128,7 +127,7 @@ validate_changes() {
         local size
         size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo 0)
         if [[ "$size" -gt "$MAX_FILE_SIZE" ]]; then
-            log_warn "Large file ($(( size / 1024 / 1024 ))MB): ${file#$STAGING_DIR/}"
+            log_warn "Large file ($(( size / 1024 / 1024 ))MB): ${file#"$STAGING_DIR"/}"
         fi
     done < <(find "$STAGING_DIR" -type f -print0)
 
@@ -153,7 +152,7 @@ validate_changes() {
         filetype=$(file -b "$file" 2>/dev/null || echo "unknown")
         case "$filetype" in
             *ELF*|*Mach-O*|*executable*|*"shared object"*)
-                log_warn "Binary/executable: ${file#$STAGING_DIR/} ($filetype)"
+                log_warn "Binary/executable: ${file#"$STAGING_DIR"/} ($filetype)"
                 binary_warnings=$((binary_warnings + 1))
                 ;;
         esac
@@ -181,7 +180,7 @@ validate_changes() {
             fi
         done
         if [[ "$expected" == "false" ]]; then
-            log_warn "Unexpected extension: ${file#$STAGING_DIR/} (${ext})"
+            log_warn "Unexpected extension: ${file#"$STAGING_DIR"/} (${ext})"
         fi
     done < <(find "$STAGING_DIR" -type f -print0)
 
@@ -199,7 +198,7 @@ preview_changes() {
     echo ""
 
     find "$STAGING_DIR" -type f -print0 | sort -z | while IFS= read -r -d '' file; do
-        local rel="${file#$STAGING_DIR/}"
+        local rel="${file#"$STAGING_DIR"/}"
         local size
         size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file" 2>/dev/null || echo "?")
         echo "  ${rel} (${size} bytes)"
