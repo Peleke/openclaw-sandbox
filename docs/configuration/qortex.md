@@ -4,14 +4,15 @@
 
 ## What It Does
 
-The qortex role handles six things:
+The qortex role handles seven things:
 
-1. **CLI installation** via `uv tool install qortex[mcp,vec-sqlite,observability]`
-2. **Seed exchange directories** for structured data handoff (`~/.qortex/seeds/{pending,processed,failed}`)
-3. **Signals directory** for projection output (`~/.qortex/signals/`)
-4. **Buildlog interop config** (`~/.buildlog/interop.yaml`) linking buildlog to qortex's seed pipeline
-5. **OTEL environment** (`/etc/openclaw/qortex-otel.env` + `/etc/profile.d/qortex-otel.sh`) so qortex exports traces and metrics to the host collector
-6. **Gateway config injection** (via `fix-vm-paths.yml`): injects `memorySearch` with `provider: "qortex"` and `learning` config into `openclaw.json` so the gateway uses qortex for both memory tools and bandit-based tool selection
+1. **CLI installation** via `uv tool install qortex[mcp,vec-sqlite,observability,nlp]` (includes spaCy for concept extraction)
+2. **Concept extraction setup**: downloads the spaCy `en_core_web_sm` model when `qortex_extraction` is `spacy` (default)
+3. **Seed exchange directories** for structured data handoff (`~/.qortex/seeds/{pending,processed,failed}`)
+4. **Signals directory** for projection output (`~/.qortex/signals/`)
+5. **Buildlog interop config** (`~/.buildlog/interop.yaml`) linking buildlog to qortex's seed pipeline
+6. **OTEL environment** (`/etc/openclaw/qortex-otel.env` + `/etc/profile.d/qortex-otel.sh`) so qortex exports traces and metrics to the host collector
+7. **Gateway config injection** (via `fix-vm-paths.yml`): injects `memorySearch` with `provider: "qortex"` and `learning` config into `openclaw.json` so the gateway uses qortex for both memory tools and bandit-based tool selection
 
 ## Setup
 
@@ -90,7 +91,8 @@ This enables buildlog to:
 |----------|---------|-------------|
 | `qortex_enabled` | `true` | Enable qortex directory setup and interop config |
 | `qortex_install` | `true` | Install qortex CLI via `uv tool install` |
-| `qortex_extras` | `mcp,vec-sqlite,observability` | Pip extras for qortex (MCP server, vector search, OTEL) |
+| `qortex_extras` | `mcp,vec-sqlite,observability,nlp` | Pip extras for qortex (MCP server, vector search, OTEL, spaCy NLP) |
+| `qortex_extraction` | `spacy` | Concept extraction strategy: `spacy`, `llm`, or `none` |
 | `qortex_otel_enabled` | `true` | Export OpenTelemetry traces and Prometheus metrics |
 | `qortex_otel_endpoint` | `http://host.lima.internal:4318` | OTEL collector endpoint on the host |
 | `qortex_otel_protocol` | `http/protobuf` | OTEL exporter wire protocol |
@@ -105,6 +107,12 @@ Override with `-e`:
 
 # Disable OTEL export (keeps qortex but no metrics)
 ./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_otel_enabled=false"
+
+# Use LLM extraction instead of spaCy (requires API key)
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_extraction=llm"
+
+# Disable extraction entirely
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_extraction=none"
 ```
 
 ## Observability (OTEL + Prometheus)
@@ -123,6 +131,8 @@ Both set the same variables:
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` | Wire format |
 | `QORTEX_PROMETHEUS_ENABLED` | `true` | Expose metrics endpoint |
 | `QORTEX_PROMETHEUS_PORT` | `9090` | Prometheus scrape port |
+| `QORTEX_EXTRACTION` | `spacy` | Concept extraction strategy (`spacy`, `llm`, `none`) |
+| `HF_HUB_OFFLINE` | `1` | Prevent HuggingFace model downloads at runtime (models pre-cached during provisioning) |
 
 The firewall role allows TCP 4318 outbound to the Lima host gateway IP (`192.168.5.2`) when OTEL is enabled. Loopback traffic for Prometheus (port 9090) is already allowed.
 
@@ -174,6 +184,40 @@ The qortex role guards `~/.buildlog` directory creation. If the buildlog role ha
 
 - **With buildlog**: interop.yaml is deployed into the existing `~/.buildlog/`
 - **Without buildlog**: qortex creates `~/.buildlog/` as a real directory and deploys interop.yaml
+
+## Upgrading qortex
+
+Use `bilrost upgrade` to build, deploy, and install qortex wheels from local source into the sandbox. This replaces ad-hoc wheel copying and `uv tool install` commands.
+
+### From local source (build + deploy)
+
+```bash
+bilrost upgrade -q ~/Projects/qortex
+```
+
+This:
+
+1. Builds wheels for `qortex`, `qortex-online`, `qortex-observe`, and `qortex-ingest`
+2. SCPs them to the VM
+3. Installs with `uv tool install qortex[all]` plus all namespace packages
+4. Ensures the spaCy `en_core_web_sm` model is installed
+5. Restarts the gateway
+
+### From pre-built wheels
+
+```bash
+bilrost upgrade -w ~/Projects/qortex/dist
+```
+
+Skips the build step. Useful when you've already built wheels or received them from CI.
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-q`, `--qortex-dir` | Path to local qortex source directory |
+| `-w`, `--wheel-dir` | Path to pre-built wheels directory |
+| `--skip-restart` | Install without restarting the gateway |
 
 ## Verification Commands
 
