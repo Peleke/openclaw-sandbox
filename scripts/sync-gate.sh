@@ -116,7 +116,7 @@ validate_changes() {
         if [[ -n "$matches" ]]; then
             log_error "Blocked file extension found: ${ext}"
             echo "$matches" | while read -r f; do
-                echo "  - ${f#$STAGING_DIR/}"
+                echo "  - ${f#"$STAGING_DIR"/}"
             done
             failed=1
         fi
