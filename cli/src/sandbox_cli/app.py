@@ -62,9 +62,15 @@ def up(
         bool,
         typer.Option("--fresh", help="Destroy existing VM first, then reprovision."),
     ] = False,
+    memgraph: Annotated[
+        bool,
+        typer.Option("--memgraph", help="Enable Memgraph (overrides profile setting)."),
+    ] = False,
 ) -> None:
     """Provision (or reprovision) the sandbox VM."""
     profile = _load_and_validate()
+    if memgraph:
+        profile.mode.memgraph = True
     bootstrap_dir = find_bootstrap_dir(profile)
     lima = LimaManager()
     if fresh:
