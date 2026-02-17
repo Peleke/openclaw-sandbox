@@ -88,11 +88,32 @@
   ansible.builtin.set_fact:
     _qortex_effective_extras: "{{ qortex_extras }}{{ ',memgraph' if (memgraph_enabled | default(false) | bool) else '' }}"
 
-- name: Install or upgrade qortex via uv tool
+- name: Install qortex from local wheels
   become: false
-  when: qortex_install | default(true) | bool
+  when:
+    - qortex_install | default(true) | bool
+    - qortex_wheel_dir | default('') | length > 0
   ansible.builtin.shell: |
-    {{ user_home }}/.local/bin/uv tool install --upgrade --prerelease=allow qortex{% if _qortex_effective_extras %}[{{ _qortex_effective_extras }}]{% endif %}
+    {{ user_home }}/.local/bin/uv tool install --force --reinstall --prerelease=allow \
+      '{{ qortex_wheel_dir }}/qortex-*.whl[all]' \
+      --with '{{ qortex_wheel_dir }}/qortex_online-*.whl[all]' \
+      --with '{{ qortex_wheel_dir }}/qortex_observe-*.whl[all]' \
+      --with '{{ qortex_wheel_dir }}/qortex_ingest-*.whl[all]' \
+      --with 'sqlite-vec>=0.1.7a2'
+  environment:
+    HOME: "{{ user_home }}"
+  register: qortex_install_result
+  failed_when: false
+
+- name: Install or upgrade qortex from PyPI
+  become: false
+  when:
+    - qortex_install | default(true) | bool
+    - qortex_wheel_dir | default('') | length == 0
+  ansible.builtin.shell: |
+    {{ user_home }}/.local/bin/uv tool install --upgrade --prerelease=allow \
+      qortex{% if _qortex_effective_extras %}[{{ _qortex_effective_extras }}]{% endif %} \
+      --with 'sqlite-vec>=0.1.7a2'
   environment:
     HOME: "{{ user_home }}"
   register: qortex_install_result
@@ -108,6 +129,21 @@
     HOME: "{{ user_home }}"
   register: sqlite_vec_fix
   changed_when: "'Installed' in (sqlite_vec_fix.stdout | default(''))"
+  failed_when: false
+
+- name: Download spaCy en_core_web_sm model
+  become: false
+  when:
+    - qortex_install | default(true) | bool
+    - qortex_extraction | default('spacy') == 'spacy'
+  ansible.builtin.shell: |
+    {{ user_home }}/.local/bin/uv pip install \
+      --python {{ user_home }}/.local/share/uv/tools/qortex/bin/python3 \
+      en_core_web_sm@https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+  environment:
+    HOME: "{{ user_home }}"
+  register: spacy_model_result
+  changed_when: "'Installed' in (spacy_model_result.stdout | default(''))"
   failed_when: false
 
 - name: Display qortex install result
@@ -163,6 +199,7 @@
       {% if qortex_otel_enabled | default(false) | bool %}
       OTEL: enabled → {{ qortex_otel_endpoint }}
       {% endif %}
+      Extraction: {{ qortex_extraction | default('spacy') }}
       {% if memgraph_enabled | default(false) | bool %}
       Graph: memgraph (bolt://localhost:{{ memgraph_bolt_port | default(7687) }})
       Teleportation: enabled

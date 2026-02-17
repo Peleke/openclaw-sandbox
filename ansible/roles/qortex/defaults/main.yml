@@ -8,8 +8,17 @@ qortex_enabled: true
 qortex_install: true
 
 # Pip extras — "vec-sqlite" provides sqlite-vec + sentence-transformers for local vector search
+# "nlp" provides spaCy + qortex-online for concept extraction
 # When memgraph_enabled, the memgraph extra (neo4j driver) is appended automatically
-qortex_extras: "mcp,vec-sqlite,observability"
+qortex_extras: "mcp,vec-sqlite,observability,nlp"
+
+# Local wheel directory — when set, install from local wheels instead of PyPI.
+# Expected contents: qortex-*.whl, qortex_online-*.whl, qortex_observe-*.whl
+# Leave empty to install from PyPI.
+qortex_wheel_dir: ""
+
+# Concept extraction strategy: spacy (default), llm, none
+qortex_extraction: "spacy"
 
 # OpenTelemetry observability
 qortex_otel_enabled: true

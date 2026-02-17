@@ -7,6 +7,8 @@ export OTEL_EXPORTER_OTLP_ENDPOINT={{ qortex_otel_endpoint }}
 export OTEL_EXPORTER_OTLP_PROTOCOL={{ qortex_otel_protocol | default('http/protobuf') }}
 export QORTEX_PROMETHEUS_ENABLED={{ qortex_prometheus_enabled | default(false) | string | lower }}
 export QORTEX_PROMETHEUS_PORT={{ qortex_prometheus_port | default(9090) }}
+# Concept extraction strategy (spacy, llm, none)
+export QORTEX_EXTRACTION={{ qortex_extraction | default('spacy') }}
 # Skip HuggingFace network verification at runtime — model is pre-cached during provisioning
 export HF_HUB_OFFLINE=1
 {% if memgraph_enabled | default(false) | bool %}

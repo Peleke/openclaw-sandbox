@@ -131,6 +131,182 @@ def onboard() -> None:
 
 
 @app.command()
+def upgrade(
+    qortex_dir: Annotated[
+        Optional[str],
+        typer.Option(
+            "--qortex-dir", "-q",
+            help="Path to local qortex source directory. Builds wheels from source.",
+        ),
+    ] = None,
+    wheel_dir: Annotated[
+        Optional[str],
+        typer.Option(
+            "--wheel-dir", "-w",
+            help="Path to pre-built wheels directory (skips build step).",
+        ),
+    ] = None,
+    skip_restart: Annotated[
+        bool,
+        typer.Option("--skip-restart", help="Install without restarting the gateway."),
+    ] = False,
+) -> None:
+    """Build, deploy, and install qortex wheels into the sandbox.
+
+    Dev workflow: build wheels from local source, SCP to VM, install, restart.
+    Replaces the ad-hoc wheel juggling dance forever.
+
+    \b
+    Examples:
+        bilrost upgrade -q ~/Projects/qortex          # build + deploy + restart
+        bilrost upgrade -w ~/Projects/qortex/dist      # deploy pre-built wheels
+        bilrost upgrade -q ~/Projects/qortex --skip-restart
+    """
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    _load_and_validate(strict=False)
+    lima = LimaManager()
+    if lima.vm_status() != "Running":
+        console.print("[yellow]VM is not running.[/yellow] Run [bold]bilrost up[/bold] first.")
+        raise typer.Exit(1)
+
+    if not qortex_dir and not wheel_dir:
+        console.print("[red]error:[/red] Provide --qortex-dir (build from source) or --wheel-dir (pre-built).")
+        raise typer.Exit(1)
+
+    # ── Step 1: Build wheels ────────────────────────────────────────────
+    if qortex_dir:
+        src = Path(qortex_dir).expanduser().resolve()
+        if not (src / "pyproject.toml").exists():
+            console.print(f"[red]error:[/red] No pyproject.toml in {src}")
+            raise typer.Exit(1)
+
+        dist = src / "dist"
+        if dist.exists():
+            shutil.rmtree(dist)
+        dist.mkdir()
+
+        console.print(f"[blue]Building wheels from {src}...[/blue]")
+        builds = [
+            (src, dist),
+            (src / "packages" / "qortex-online", dist),
+            (src / "packages" / "qortex-observe", dist),
+            (src / "packages" / "qortex-ingest", dist),
+        ]
+        for pkg_dir, out_dir in builds:
+            if not (pkg_dir / "pyproject.toml").exists():
+                console.print(f"  [dim]skip[/dim] {pkg_dir.name} (no pyproject.toml)")
+                continue
+            console.print(f"  [dim]build[/dim] {pkg_dir.name}")
+            proc = subprocess.run(
+                ["uv", "build", "--wheel", "--out-dir", str(out_dir)],
+                cwd=str(pkg_dir),
+                capture_output=True, text=True,
+            )
+            if proc.returncode != 0:
+                console.print(f"[red]Build failed for {pkg_dir.name}:[/red]")
+                console.print(proc.stderr)
+                raise typer.Exit(1)
+        whl_dir = dist
+    else:
+        whl_dir = Path(wheel_dir).expanduser().resolve()  # type: ignore[arg-type]
+
+    wheels = list(whl_dir.glob("*.whl"))
+    if not wheels:
+        console.print(f"[red]error:[/red] No .whl files found in {whl_dir}")
+        raise typer.Exit(1)
+    console.print(f"  [green]{len(wheels)} wheel(s) ready[/green]")
+
+    # ── Step 2: SCP wheels to VM ────────────────────────────────────────
+    console.print("[blue]Copying wheels to VM...[/blue]")
+    ssh = lima.get_ssh_details()
+    for whl in wheels:
+        proc = subprocess.run(
+            [
+                "scp", "-P", str(ssh.port),
+                "-i", ssh.key_path,
+                "-o", "StrictHostKeyChecking=no",
+                str(whl),
+                f"{ssh.user}@{ssh.host}:/tmp/",
+            ],
+            capture_output=True, text=True,
+        )
+        if proc.returncode != 0:
+            console.print(f"[red]SCP failed for {whl.name}:[/red] {proc.stderr}")
+            raise typer.Exit(1)
+        console.print(f"  [dim]copied[/dim] {whl.name}")
+
+    # ── Step 3: Install wheels ──────────────────────────────────────────
+    # Use qortex[all] to pull every optional extra (vec, memgraph, nlp, mcp,
+    # observability, llm, causal, pdf, source-postgres, dev).
+    # Namespace packages (online, observe, ingest) are separate wheels that
+    # must be --with'd explicitly with their own [all] extras.
+    console.print("[blue]Installing wheels in VM...[/blue]")
+    uv = "~/.local/bin/uv"
+    tool_python = "~/.local/share/uv/tools/qortex/bin/python3"
+
+    # Resolve exact filenames locally to avoid shell glob + bracket quoting issues.
+    # Main wheel gets [all] (pulls vec, memgraph, nlp, mcp, observability, llm, etc).
+    # Namespace wheels get [all] too (pulls their otel, nlp, anthropic extras).
+    main_wheels = [w for w in wheels if w.name.startswith("qortex-") and not w.name.startswith("qortex_")]
+    if not main_wheels:
+        console.print("[red]error:[/red] No main qortex wheel found (expected qortex-*.whl)")
+        raise typer.Exit(1)
+    main_whl = main_wheels[0].name
+
+    ns_patterns = ["qortex_online-*.whl", "qortex_observe-*.whl", "qortex_ingest-*.whl"]
+    with_clauses = []
+    for pattern in ns_patterns:
+        for match in whl_dir.glob(pattern):
+            # Quote the path[extra] to prevent shell bracket expansion
+            with_clauses.append(f"--with '/tmp/{match.name}[all]'")
+
+    # Pin sqlite-vec prerelease in the install itself — 0.1.6 ships a
+    # 32-bit ELF on aarch64 that segfaults. If we fix it post-install,
+    # any re-resolve pulls 0.1.6 back. Bake the pin into the command.
+    install_cmd = (
+        f"{uv} tool install --force --reinstall --prerelease=allow "
+        f"'/tmp/{main_whl}[all]' "
+        + " ".join(with_clauses)
+        + " --with 'sqlite-vec>=0.1.7a2'"
+    )
+    result = lima.shell_run(install_cmd)
+    if result.returncode != 0:
+        console.print(f"[red]Install failed:[/red]\n{result.stderr}")
+        raise typer.Exit(1)
+    console.print(f"  [green]installed[/green]")
+
+    # ── Step 4: spaCy model ─────────────────────────────────────────────
+    console.print("[blue]Ensuring spaCy model...[/blue]")
+    spacy_url = (
+        "https://github.com/explosion/spacy-models/releases/download/"
+        "en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"
+    )
+    spacy_cmd = f"{uv} pip install --python {tool_python} en_core_web_sm@{spacy_url}"
+    result = lima.shell_run(spacy_cmd)
+    if result.returncode != 0:
+        console.print(f"[yellow]warning:[/yellow] spaCy model install failed: {result.stderr}")
+    else:
+        console.print(f"  [green]en_core_web_sm ready[/green]")
+
+    # ── Step 6: Restart gateway ─────────────────────────────────────────
+    if not skip_restart:
+        console.print("[blue]Restarting gateway...[/blue]")
+        result = lima.shell_run("sudo systemctl restart openclaw-gateway")
+        if result.returncode != 0:
+            console.print(f"[red]Gateway restart failed:[/red] {result.stderr}")
+            raise typer.Exit(1)
+        console.print("[green]Gateway restarted.[/green]")
+
+    # ── Step 7: Cleanup ─────────────────────────────────────────────────
+    lima.shell_run("rm -f /tmp/qortex*.whl")
+
+    console.print("\n[bold green]Upgrade complete.[/bold green]")
+
+
+@app.command()
 def restart() -> None:
     """Restart the OpenClaw gateway service in the VM."""
     _load_and_validate(strict=False)
