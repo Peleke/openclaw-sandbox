@@ -99,6 +99,7 @@
       --with '{{ qortex_wheel_dir }}/qortex_online-*.whl[all]' \
       --with '{{ qortex_wheel_dir }}/qortex_observe-*.whl[all]' \
       --with '{{ qortex_wheel_dir }}/qortex_ingest-*.whl[all]' \
+      --with '{{ qortex_wheel_dir }}/qortex_learning-*.whl[all]' \
       --with 'sqlite-vec>=0.1.7a2'
   environment:
     HOME: "{{ user_home }}"
@@ -113,6 +114,7 @@
   ansible.builtin.shell: |
     {{ user_home }}/.local/bin/uv tool install --upgrade --prerelease=allow \
       qortex{% if _qortex_effective_extras %}[{{ _qortex_effective_extras }}]{% endif %} \
+      --with 'qortex-learning' \
       --with 'sqlite-vec>=0.1.7a2'
   environment:
     HOME: "{{ user_home }}"

@@ -146,6 +146,10 @@ def upgrade(
             help="Path to pre-built wheels directory (skips build step).",
         ),
     ] = None,
+    dev: Annotated[
+        bool,
+        typer.Option("--dev", help="Install latest dev build from Test PyPI."),
+    ] = False,
     skip_restart: Annotated[
         bool,
         typer.Option("--skip-restart", help="Install without restarting the gateway."),
@@ -160,6 +164,7 @@ def upgrade(
     Examples:
         bilrost upgrade -q ~/Projects/qortex          # build + deploy + restart
         bilrost upgrade -w ~/Projects/qortex/dist      # deploy pre-built wheels
+        bilrost upgrade --dev                          # install from Test PyPI
         bilrost upgrade -q ~/Projects/qortex --skip-restart
     """
     import shutil
@@ -171,6 +176,42 @@ def upgrade(
     if lima.vm_status() != "Running":
         console.print("[yellow]VM is not running.[/yellow] Run [bold]bilrost up[/bold] first.")
         raise typer.Exit(1)
+
+    # ── Dev channel: install from Test PyPI ────────────────────────────
+    if dev:
+        if qortex_dir or wheel_dir:
+            console.print("[red]error:[/red] --dev is mutually exclusive with --qortex-dir / --wheel-dir.")
+            raise typer.Exit(1)
+
+        console.print("[blue]Installing latest dev build from Test PyPI...[/blue]")
+        uv = "~/.local/bin/uv"
+        install_cmd = (
+            f"{uv} tool install --force --reinstall --prerelease=allow "
+            f"--extra-index-url https://test.pypi.org/simple/ "
+            f"--index-strategy unsafe-best-match "
+            f"'qortex[mcp,vec-sqlite,observability,nlp]' "
+            f"--with 'qortex-online[nlp]' "
+            f"--with 'qortex-observe[otel]' "
+            f"--with 'qortex-ingest' "
+            f"--with 'qortex-learning' "
+            f"--with 'sqlite-vec>=0.1.7a2'"
+        )
+        result = lima.shell_run(install_cmd)
+        if result.returncode != 0:
+            console.print(f"[red]Install failed:[/red]\n{result.stderr}")
+            raise typer.Exit(1)
+        console.print("[green]Dev build installed from Test PyPI.[/green]")
+
+        if not skip_restart:
+            console.print("[blue]Restarting gateway...[/blue]")
+            result = lima.shell_run("sudo systemctl restart openclaw-gateway")
+            if result.returncode != 0:
+                console.print(f"[red]Gateway restart failed:[/red] {result.stderr}")
+                raise typer.Exit(1)
+            console.print("[green]Gateway restarted.[/green]")
+
+        console.print("\n[bold green]Dev upgrade complete.[/bold green]")
+        return
 
     if not qortex_dir and not wheel_dir:
         console.print("[red]error:[/red] Provide --qortex-dir (build from source) or --wheel-dir (pre-built).")
@@ -194,6 +235,7 @@ def upgrade(
             (src / "packages" / "qortex-online", dist),
             (src / "packages" / "qortex-observe", dist),
             (src / "packages" / "qortex-ingest", dist),
+            (src / "packages" / "qortex-learning", dist),
         ]
         for pkg_dir, out_dir in builds:
             if not (pkg_dir / "pyproject.toml").exists():
@@ -256,7 +298,7 @@ def upgrade(
         raise typer.Exit(1)
     main_whl = main_wheels[0].name
 
-    ns_patterns = ["qortex_online-*.whl", "qortex_observe-*.whl", "qortex_ingest-*.whl"]
+    ns_patterns = ["qortex_online-*.whl", "qortex_observe-*.whl", "qortex_ingest-*.whl", "qortex_learning-*.whl"]
     with_clauses = []
     for pattern in ns_patterns:
         for match in whl_dir.glob(pattern):
