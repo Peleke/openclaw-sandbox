@@ -41,6 +41,8 @@ class Mode(BaseModel):
     no_docker: bool = False
     memgraph: bool = False
     memgraph_ports: list[int] = []
+    pgvector: bool = False
+    qortex_serve: bool = False
 
 
 class Resources(BaseModel):

@@ -231,11 +231,14 @@
   register: node_modules_recheck
 
 - name: Install OpenClaw dependencies (using bun)
+  become: false
   when: not node_modules_recheck.stat.exists
   ansible.builtin.shell: |
     export PATH="{{ user_home }}/.bun/bin:$PATH"
     cd {{ workspace_path }} && bun install
     touch {{ workspace_path }}/node_modules/.linux-installed
+  environment:
+    HOME: "{{ user_home }}"
   register: bun_install_result
 
 - name: Display bun install result
@@ -250,10 +253,13 @@
   register: dist_exists
 
 - name: Build OpenClaw
+  become: false
   when: not dist_exists.stat.exists
   ansible.builtin.shell: |
     export PATH="{{ user_home }}/.bun/bin:$PATH"
     cd {{ workspace_path }} && bun run build
+  environment:
+    HOME: "{{ user_home }}"
   args:
     creates: "{{ workspace_path }}/dist/index.js"
 

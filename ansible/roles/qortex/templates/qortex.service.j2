@@ -21,14 +21,14 @@ RestartSec=5
 TimeoutStartSec=120
 TimeoutStopSec=30
 
-# Hardening
+# Hardening — ProtectHome=read-only conflicts with ReadWritePaths on some
+# systemd versions (the model cache under ~/.cache needs write access).
+# Use ProtectHome=tmpfs + BindPaths to mount only what's needed.
 NoNewPrivileges=true
 ProtectSystem=strict
-ProtectHome=read-only
-ReadWritePaths={{ user_home }}/.qortex
-{% if qortex_vec_backend | default('sqlite') == 'sqlite' %}
-ReadWritePaths={{ user_home }}/.qortex/vectors.db
-{% endif %}
+BindReadOnlyPaths={{ user_home }}/.local
+BindPaths={{ user_home }}/.cache
+BindPaths={{ user_home }}/.qortex
 
 [Install]
 WantedBy=multi-user.target

@@ -50,6 +50,9 @@ def build_extra_vars(profile: SandboxProfile) -> list[str]:
         ("agent_data_mount", agent_mount),
         ("buildlog_data_mount", buildlog_mount),
         ("memgraph_enabled", str(profile.mode.memgraph).lower()),
+        ("pgvector_enabled", str(profile.mode.pgvector).lower()),
+        ("qortex_vec_backend", "pgvector" if profile.mode.pgvector else "sqlite"),
+        ("qortex_serve_enabled", str(profile.mode.qortex_serve).lower()),
     ]
 
     argv: list[str] = []

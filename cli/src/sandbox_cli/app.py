@@ -66,11 +66,23 @@ def up(
         bool,
         typer.Option("--memgraph", help="Enable Memgraph (overrides profile setting)."),
     ] = False,
+    pgvector: Annotated[
+        bool,
+        typer.Option("--pgvector", help="Enable pgvector (overrides profile setting)."),
+    ] = False,
+    qortex_serve: Annotated[
+        bool,
+        typer.Option("--qortex-serve", help="Enable qortex HTTP service (overrides profile setting)."),
+    ] = False,
 ) -> None:
     """Provision (or reprovision) the sandbox VM."""
     profile = _load_and_validate()
     if memgraph:
         profile.mode.memgraph = True
+    if pgvector:
+        profile.mode.pgvector = True
+    if qortex_serve:
+        profile.mode.qortex_serve = True
     bootstrap_dir = find_bootstrap_dir(profile)
     lima = LimaManager()
     if fresh:

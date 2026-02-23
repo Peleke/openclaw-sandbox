@@ -147,8 +147,12 @@
             'agents': openclaw_config.agents | default({}) | combine({
               'defaults': (openclaw_config.agents.defaults | default({})) | combine({
                 'memorySearch': ((openclaw_config.agents.defaults | default({})).memorySearch | default({})) | combine({
-                  'transport': 'http',
-                  'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string
+                  'qortex': (((openclaw_config.agents.defaults | default({})).memorySearch | default({})).qortex | default({})) | combine({
+                    'transport': 'http',
+                    'http': {
+                      'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string
+                    }
+                  })
                 })
               })
             })
@@ -162,8 +166,12 @@
         openclaw_config: >-
           {{ openclaw_config | combine({
             'learning': (openclaw_config.learning | default({})) | combine({
-              'transport': 'http',
-              'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string
+              'qortex': ((openclaw_config.learning | default({})).qortex | default({})) | combine({
+                'transport': 'http',
+                'http': {
+                  'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string
+                }
+              })
             })
           }, recursive=true) }}
       when: >

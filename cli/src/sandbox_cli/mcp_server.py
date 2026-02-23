@@ -83,6 +83,8 @@ def sandbox_status() -> dict:
         "yolo_unsafe": profile.mode.yolo_unsafe,
         "docker": not profile.mode.no_docker,
         "memgraph": profile.mode.memgraph,
+        "pgvector": profile.mode.pgvector,
+        "qortex_serve": profile.mode.qortex_serve,
         "resources": f"{profile.resources.cpus} CPUs / {profile.resources.memory} / {profile.resources.disk}",
     }
 
