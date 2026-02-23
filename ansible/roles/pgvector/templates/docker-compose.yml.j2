@@ -1,0 +1,25 @@
+# {{ ansible_managed }}
+# PostgreSQL + pgvector for qortex vector search backend
+# Uses host networking — Docker bridge NAT breaks on Lima VMs
+services:
+  pgvector:
+    image: {{ pgvector_image }}
+    container_name: qortex-pgvector
+    network_mode: host
+    volumes:
+      - pgvector_data:{{ pgvector_data_dir }}
+      - {{ pgvector_compose_dir }}/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      - POSTGRES_USER={{ pgvector_user }}
+      - POSTGRES_PASSWORD={{ pgvector_password }}
+      - POSTGRES_DB={{ pgvector_database }}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ pgvector_user }} -d {{ pgvector_database }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  pgvector_data:

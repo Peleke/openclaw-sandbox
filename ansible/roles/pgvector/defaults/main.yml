@@ -1,0 +1,23 @@
+---
+# PgVector Role Defaults
+# PostgreSQL + pgvector for qortex vector search backend
+
+# Master switch — opt-in (requires docker_enabled)
+pgvector_enabled: false
+
+# Container image (official pgvector on PostgreSQL 16)
+pgvector_image: "pgvector/pgvector:pg16"
+
+# Port
+pgvector_port: 5432
+
+# Auth
+pgvector_user: "qortex"
+pgvector_password: "qortex"
+pgvector_database: "qortex"
+
+# Persistent data directory (must match PGDATA in the postgres image)
+pgvector_data_dir: "/var/lib/postgresql/data"
+
+# Docker-compose project directory
+pgvector_compose_dir: "/opt/pgvector"

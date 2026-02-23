@@ -1,0 +1,4 @@
+-- {{ ansible_managed }}
+-- Enable pgvector extension on database creation.
+-- Table and HNSW index are managed by qortex at runtime.
+CREATE EXTENSION IF NOT EXISTS vector;

@@ -1,0 +1,103 @@
+---
+# PgVector Role
+# Deploys a persistent PostgreSQL + pgvector container for qortex vector backend
+
+- name: Skip PgVector (pgvector_enabled is false)
+  when: not (pgvector_enabled | default(false) | bool)
+  ansible.builtin.debug:
+    msg: "PgVector installation skipped (pgvector_enabled=false)"
+
+- name: Deploy PgVector
+  when: pgvector_enabled | default(false) | bool
+  block:
+    # Verify Docker is available (role depends on docker role)
+    - name: Verify Docker is available
+      ansible.builtin.command: docker --version
+      register: docker_check
+      changed_when: false
+      failed_when: docker_check.rc != 0
+
+    # Create compose project directory
+    - name: Create PgVector compose directory
+      become: true
+      ansible.builtin.file:
+        path: "{{ pgvector_compose_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # Deploy init.sql (CREATE EXTENSION vector)
+    - name: Deploy PgVector init.sql
+      become: true
+      ansible.builtin.template:
+        src: init.sql.j2
+        dest: "{{ pgvector_compose_dir }}/init.sql"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart pgvector
+
+    # Deploy docker-compose.yml
+    - name: Deploy PgVector docker-compose.yml
+      become: true
+      ansible.builtin.template:
+        src: docker-compose.yml.j2
+        dest: "{{ pgvector_compose_dir }}/docker-compose.yml"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart pgvector
+
+    # Start PgVector
+    - name: Start PgVector container
+      become: true
+      ansible.builtin.shell: |
+        docker compose -f {{ pgvector_compose_dir }}/docker-compose.yml up -d
+      args:
+        chdir: "{{ pgvector_compose_dir }}"
+      register: pgvector_up
+      changed_when: "'Started' in pgvector_up.stderr or 'Creating' in pgvector_up.stderr"
+
+    # Health check — wait for PostgreSQL port
+    - name: Wait for PgVector PostgreSQL port
+      ansible.builtin.wait_for:
+        host: localhost
+        port: "{{ pgvector_port }}"
+        timeout: 60
+        delay: 5
+        state: started
+
+    # Verify container is healthy
+    - name: Check PgVector container status
+      ansible.builtin.shell: |
+        docker inspect --format='{{ '{{' }}.State.Health.Status{{ '}}' }}' qortex-pgvector 2>/dev/null || echo "no-healthcheck"
+      register: pgvector_health
+      changed_when: false
+      retries: 6
+      delay: 10
+      until: pgvector_health.stdout == "healthy" or pgvector_health.stdout == "no-healthcheck"
+
+    # Verify pgvector extension is loaded
+    - name: Verify pgvector extension is available
+      ansible.builtin.shell: |
+        docker exec qortex-pgvector psql -U {{ pgvector_user }} -d {{ pgvector_database }} -tAc "SELECT extname FROM pg_extension WHERE extname='vector'"
+      register: pgvector_ext_check
+      changed_when: false
+      failed_when: "'vector' not in pgvector_ext_check.stdout"
+      retries: 3
+      delay: 5
+
+    - name: PgVector deployment complete
+      ansible.builtin.debug:
+        msg: |
+          ════════════════════════════════════════════════════════
+          PgVector deployed!
+
+          PostgreSQL: localhost:{{ pgvector_port }}
+          Database:   {{ pgvector_database }}
+          User:       {{ pgvector_user }}
+          Compose:    {{ pgvector_compose_dir }}/docker-compose.yml
+          Data:       Docker volume pgvector_data
+          Health:     {{ pgvector_health.stdout | default('unknown') }}
+          ════════════════════════════════════════════════════════

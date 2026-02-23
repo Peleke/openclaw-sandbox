@@ -1,0 +1,34 @@
+# {{ ansible_managed }}
+# qortex HTTP service — persistent vector search + knowledge graph backend
+
+[Unit]
+Description=Qortex Knowledge Graph Service
+After=network-online.target{% if pgvector_enabled | default(false) | bool %} docker.service{% endif %}
+
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ ansible_user }}
+Group={{ ansible_user }}
+EnvironmentFile=/etc/openclaw/qortex.env
+{% if qortex_otel_enabled | default(false) | bool %}
+EnvironmentFile=/etc/openclaw/qortex-otel.env
+{% endif %}
+ExecStart={{ user_home }}/.local/bin/qortex serve --host {{ qortex_serve_host }} --port {{ qortex_serve_port }}
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths={{ user_home }}/.qortex
+{% if qortex_vec_backend | default('sqlite') == 'sqlite' %}
+ReadWritePaths={{ user_home }}/.qortex/vectors.db
+{% endif %}
+
+[Install]
+WantedBy=multi-user.target

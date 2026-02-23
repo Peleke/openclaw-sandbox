@@ -1,0 +1,7 @@
+---
+- name: Restart pgvector
+  become: true
+  ansible.builtin.shell: |
+    docker compose -f {{ pgvector_compose_dir }}/docker-compose.yml restart pgvector
+  args:
+    chdir: "{{ pgvector_compose_dir }}"

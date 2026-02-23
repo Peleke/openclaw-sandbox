@@ -138,6 +138,38 @@
           }, recursive=true) }}
       when: qortex_enabled | default(false) | bool
 
+    # When qortex serve mode is enabled, switch memorySearch and learning
+    # to HTTP transport instead of MCP subprocess.
+    - name: Switch memorySearch to HTTP transport (when qortex serve enabled)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': openclaw_config.agents | default({}) | combine({
+              'defaults': (openclaw_config.agents.defaults | default({})) | combine({
+                'memorySearch': ((openclaw_config.agents.defaults | default({})).memorySearch | default({})) | combine({
+                  'transport': 'http',
+                  'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string
+                })
+              })
+            })
+          }, recursive=true) }}
+      when: >
+        (qortex_serve_enabled | default(false) | bool) and
+        ((openclaw_config.agents.defaults | default({})).memorySearch is defined)
+
+    - name: Switch learning to HTTP transport (when qortex serve enabled)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'learning': (openclaw_config.learning | default({})) | combine({
+              'transport': 'http',
+              'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string
+            })
+          }, recursive=true) }}
+      when: >
+        (qortex_serve_enabled | default(false) | bool) and
+        (openclaw_config.learning is defined)
+
     # Ensure vault bind mount persists in sandbox config.
     # The sandbox role adds this during initial provisioning, but if the vault
     # overlay wasn't mounted yet or config was rewritten, re-add it here so

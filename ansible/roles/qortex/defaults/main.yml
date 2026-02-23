@@ -28,3 +28,16 @@ qortex_otel_protocol: "http/protobuf"
 # Prometheus metrics endpoint (exposed by qortex for Grafana scraping)
 qortex_prometheus_enabled: true
 qortex_prometheus_port: 9090
+
+# HTTP service (qortex serve)
+qortex_serve_enabled: false
+qortex_serve_port: 8400
+qortex_serve_host: "0.0.0.0"
+
+# Vector backend: sqlite (default) or pgvector
+qortex_vec_backend: "sqlite"
+qortex_pgvector_dsn: "postgresql://qortex:qortex@localhost:5432/qortex"
+
+# API authentication (comma-separated keys, or empty for no auth)
+qortex_api_keys: ""
+qortex_hmac_secret: ""

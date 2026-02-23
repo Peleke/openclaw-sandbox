@@ -62,6 +62,11 @@
       tags: [memgraph]
       when: memgraph_enabled | default(false) | bool
 
+    # PgVector for qortex vector search (after docker, before qortex)
+    - role: pgvector
+      tags: [pgvector]
+      when: pgvector_enabled | default(false) | bool
+
     # GitHub CLI (after docker, before gateway — gh available when gateway starts)
     - role: gh-cli
       tags: [gh-cli]
