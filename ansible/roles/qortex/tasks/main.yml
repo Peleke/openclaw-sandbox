@@ -183,6 +183,35 @@
     insertafter: EOF
     state: present
 
+# Generate API key for qortex HTTP service (idempotent)
+- name: Generate qortex API key (if not already present)
+  when: qortex_serve_enabled | default(false) | bool
+  become: true
+  ansible.builtin.shell: openssl rand -hex 32 > /etc/openclaw/qortex-api-key
+  args:
+    creates: /etc/openclaw/qortex-api-key
+
+- name: Set permissions on qortex API key file
+  when: qortex_serve_enabled | default(false) | bool
+  become: true
+  ansible.builtin.file:
+    path: /etc/openclaw/qortex-api-key
+    owner: root
+    group: root
+    mode: "0640"
+
+- name: Read qortex API key
+  when: qortex_serve_enabled | default(false) | bool
+  become: true
+  ansible.builtin.slurp:
+    src: /etc/openclaw/qortex-api-key
+  register: _qortex_api_key_file
+
+- name: Set qortex_api_keys fact from key file
+  when: qortex_serve_enabled | default(false) | bool
+  ansible.builtin.set_fact:
+    qortex_api_keys: "{{ (_qortex_api_key_file.content | b64decode).strip() }}"
+
 # Deploy qortex HTTP service (when serve mode enabled)
 - name: Deploy qortex environment file
   when: qortex_serve_enabled | default(false) | bool

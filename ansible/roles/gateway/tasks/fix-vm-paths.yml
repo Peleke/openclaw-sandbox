@@ -138,6 +138,23 @@
           }, recursive=true) }}
       when: qortex_enabled | default(false) | bool
 
+    # Read qortex API key for auth header injection
+    - name: Read qortex API key for gateway auth
+      when: qortex_serve_enabled | default(false) | bool
+      become: true
+      ansible.builtin.slurp:
+        src: /etc/openclaw/qortex-api-key
+      register: _gw_qortex_api_key_file
+      failed_when: false
+
+    - name: Set qortex_api_key fact for gateway
+      when: >
+        (qortex_serve_enabled | default(false) | bool) and
+        (_gw_qortex_api_key_file is defined) and
+        (_gw_qortex_api_key_file.content is defined)
+      ansible.builtin.set_fact:
+        qortex_api_key: "{{ (_gw_qortex_api_key_file.content | b64decode).strip() }}"
+
     # When qortex serve mode is enabled, switch memorySearch and learning
     # to HTTP transport instead of MCP subprocess.
     - name: Switch memorySearch to HTTP transport (when qortex serve enabled)
@@ -149,9 +166,11 @@
                 'memorySearch': ((openclaw_config.agents.defaults | default({})).memorySearch | default({})) | combine({
                   'qortex': (((openclaw_config.agents.defaults | default({})).memorySearch | default({})).qortex | default({})) | combine({
                     'transport': 'http',
-                    'http': {
+                    'http': ({
                       'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string
-                    }
+                    }) | combine(
+                      {'headers': {'Authorization': 'Bearer ' ~ qortex_api_key}} if (qortex_api_key | default('') | length > 0) else {}
+                    )
                   })
                 })
               })
@@ -168,9 +187,11 @@
             'learning': (openclaw_config.learning | default({})) | combine({
               'qortex': ((openclaw_config.learning | default({})).qortex | default({})) | combine({
                 'transport': 'http',
-                'http': {
+                'http': ({
                   'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string
-                }
+                }) | combine(
+                  {'headers': {'Authorization': 'Bearer ' ~ qortex_api_key}} if (qortex_api_key | default('') | length > 0) else {}
+                )
               })
             })
           }, recursive=true) }}
