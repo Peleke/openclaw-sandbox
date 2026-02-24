@@ -30,6 +30,8 @@
       ansible.builtin.file:
         path: "{{ overlay_upper_base }}/openclaw/upper"
         state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
         mode: "0755"
 
     - name: Create overlay work directory (openclaw)
