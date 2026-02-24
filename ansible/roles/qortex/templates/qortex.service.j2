@@ -23,7 +23,7 @@ TimeoutStopSec=30
 
 # Hardening — ProtectHome=read-only conflicts with ReadWritePaths on some
 # systemd versions (the model cache under ~/.cache needs write access).
-# Use ProtectHome=tmpfs + BindPaths to mount only what's needed.
+# BindPaths expose only the directories the service actually needs.
 NoNewPrivileges=true
 ProtectSystem=strict
 BindReadOnlyPaths={{ user_home }}/.local

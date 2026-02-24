@@ -11,6 +11,12 @@ export QORTEX_PROMETHEUS_PORT={{ qortex_prometheus_port | default(9090) }}
 export QORTEX_EXTRACTION={{ qortex_extraction | default('spacy') }}
 # Skip HuggingFace network verification at runtime — model is pre-cached during provisioning
 export HF_HUB_OFFLINE=1
+{% if pgvector_enabled | default(false) | bool %}
+# Persistent storage backend (PostgreSQL + pgvector)
+export QORTEX_STORE=postgres
+export QORTEX_VEC=pgvector
+export PGVECTOR_DSN={{ qortex_pgvector_dsn | default('postgresql://qortex:qortex@localhost:5432/qortex') }}
+{% endif %}
 {% if memgraph_enabled | default(false) | bool %}
 # Memgraph persistent graph backend
 export QORTEX_GRAPH=memgraph

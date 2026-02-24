@@ -25,6 +25,9 @@ firewall_allowed_domains:
   # Discord API (messaging)
   - discord.com
   - discordapp.com
+  # LinWheel API (LinkedIn content management)
+  - linwheel.io
+  - www.linwheel.io
 
 # Tailscale CGNAT range (used by all Tailscale nodes)
 firewall_tailscale_cidr: "100.64.0.0/10"
