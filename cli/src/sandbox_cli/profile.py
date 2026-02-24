@@ -73,6 +73,8 @@ def init_wizard() -> SandboxProfile:
     yolo = input("  Enable yolo overlay mode? [y/N]: ").strip().lower() == "y"
     no_docker = input("  Skip Docker install? [y/N]: ").strip().lower() == "y"
     memgraph = input("  Enable Memgraph? [y/N]: ").strip().lower() == "y"
+    pgvector = input("  Enable pgvector? [y/N]: ").strip().lower() == "y"
+    qortex_serve = input("  Enable qortex HTTP service? [y/N]: ").strip().lower() == "y"
 
     # --- resources ---
     print("\nVM resources:")
@@ -102,6 +104,8 @@ def init_wizard() -> SandboxProfile:
                 "no_docker": no_docker,
                 "memgraph": memgraph,
                 "memgraph_ports": [],
+                "pgvector": pgvector,
+                "qortex_serve": qortex_serve,
             },
             "resources": {
                 "cpus": cpus,

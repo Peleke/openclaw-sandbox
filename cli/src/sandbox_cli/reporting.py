@@ -209,6 +209,8 @@ def print_status_report(
     table.add_row("YOLO", str(profile.mode.yolo))
     table.add_row("Docker", str(not profile.mode.no_docker))
     table.add_row("Memgraph", str(profile.mode.memgraph))
+    table.add_row("pgvector", str(profile.mode.pgvector))
+    table.add_row("qortex serve", str(profile.mode.qortex_serve))
     table.add_row(
         "Resources",
         f"{profile.resources.cpus} CPUs / {profile.resources.memory} / {profile.resources.disk}",

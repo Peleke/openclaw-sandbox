@@ -1,6 +1,6 @@
 # Secrets Management
 
-Secrets management is the backbone of the sandbox's security posture. This page is the exhaustive reference for how secrets flow from your host machine into the VM, the gateway process, and sandbox containers -- without ever appearing in logs, process lists, or shell history.
+This page documents how secrets flow from your host machine into the VM, the gateway process, and sandbox containers -- without ever appearing in logs, process lists, or shell history.
 
 ![Secrets Pipeline](../diagrams/secrets-pipeline.svg)
 
@@ -41,6 +41,8 @@ GH_TOKEN=ghp_xxxxx
 SLACK_BOT_TOKEN=xoxb-xxxxx
 DISCORD_BOT_TOKEN=xxxxx
 TELEGRAM_BOT_TOKEN=123456:ABC-xxxxx
+BRAVE_API_KEY=BSAxxxxx
+LINWHEEL_API_KEY=lw-xxxxx
 EOF
 
 # Lock down permissions on host
@@ -96,6 +98,8 @@ The secrets role evaluates sources in this order:
 | `secrets_slack_bot_token` | `SLACK_BOT_TOKEN` | Slack bot OAuth token | Gateway (Slack channel) |
 | `secrets_discord_bot_token` | `DISCORD_BOT_TOKEN` | Discord bot token | Gateway (Discord channel) |
 | `secrets_telegram_bot_token` | `TELEGRAM_BOT_TOKEN` | Telegram bot token | Gateway (Telegram channel) |
+| `secrets_brave_api_key` | `BRAVE_API_KEY` | Brave Search API key | Gateway (web search) |
+| `secrets_linwheel_api_key` | `LINWHEEL_API_KEY` | LinWheel API key (LinkedIn content management) | Gateway |
 
 ### Configuration Variables
 
@@ -122,6 +126,7 @@ has_direct_secrets: >-
     (secrets_anthropic_api_key | length > 0) or
     (secrets_openai_api_key | length > 0) or
     (secrets_gemini_api_key | length > 0) or
+    (secrets_linwheel_api_key | length > 0) or
     ...
   }}
 ```

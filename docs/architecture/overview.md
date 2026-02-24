@@ -44,7 +44,7 @@ Individual tool executions (file reads/writes, shell commands, browser actions) 
 
 ### Lima VM Configuration
 
-`bootstrap.sh` generates the Lima config at `lima/openclaw-sandbox.generated.yaml`. Key settings:
+`bootstrap.sh` generates the Lima config at `lima/openclaw-sandbox.generated.yaml`. Default settings:
 
 | Setting | Value |
 |---------|-------|
@@ -93,6 +93,21 @@ The gateway is a Node.js process managed by systemd (`openclaw-gateway.service`)
 - Gets Docker access via `SupplementaryGroups=docker` (no re-login needed)
 - Depends on `workspace.mount` when overlay is active
 
+### Qortex HTTP Service (Optional)
+
+When `qortex_serve_enabled` is true, the qortex role deploys a persistent REST API server as a systemd service (`qortex.service`). This provides HTTP endpoints for vector search and knowledge graph queries, independent of the MCP server used by the gateway.
+
+The service supports API key authentication (auto-generated on first provision) and optional HMAC-SHA256 request signing. It can use either SQLite (default) or pgvector as its vector backend.
+
+### Database Services (Optional)
+
+Two optional database containers can be provisioned after Docker:
+
+- **Memgraph** (`memgraph_enabled`): Graph database for PPR and credit propagation. Runs as `memgraph/memgraph-mage:latest` with Memgraph Lab for visualization. Ports 7687 (Bolt), 3000 (Lab), 7444 (monitoring).
+- **PgVector** (`pgvector_enabled`): PostgreSQL + pgvector for vector search. Runs as `pgvector/pgvector:pg16` with host networking. Data persisted in Docker volume `pgvector_data`.
+
+Both require `docker_enabled: true` and are opt-in (disabled by default).
+
 ### Docker Sandbox
 
 When Docker is enabled, the sandbox role:
@@ -129,20 +144,22 @@ The Ansible playbook (`ansible/playbook.yml`) executes roles in this order:
 | 1 | `secrets` | S5 | Extract and write `/etc/openclaw/secrets.env` |
 | 2 | `overlay` | S9 | Set up OverlayFS, create `/workspace` |
 | 3 | `docker` | S10 | Install Docker CE from official repo |
-| 4 | `gh-cli` | -- | Install GitHub CLI from official APT repo |
-| 5 | `gateway` | S2 | Install Node.js, build OpenClaw, deploy systemd service |
-| 6 | `firewall` | S3 | Configure UFW allowlist |
-| 7 | `tailscale` | S4 | Set up Tailscale routing |
-| 8 | `cadence` | S7 | Deploy ambient insight pipeline |
-| 9 | `buildlog` | S8 | Install buildlog for ambient learning |
-| 10 | `qortex` | -- | Install qortex CLI, deploy OTEL env, seed exchange dirs, memory + learning config |
-| 11 | `sandbox` | S10 | Build sandbox image, configure `openclaw.json` (dual-container) |
-| 12 | `sync-gate` | S9 | Deploy sync helper scripts |
+| 4 | `memgraph` | -- | Deploy Memgraph graph database container (when `memgraph_enabled`) |
+| 5 | `pgvector` | -- | Deploy PostgreSQL + pgvector container for vector search (when `pgvector_enabled`) |
+| 6 | `gh-cli` | -- | Install GitHub CLI from official APT repo |
+| 7 | `gateway` | S2 | Install Node.js, build OpenClaw, deploy systemd service |
+| 8 | `firewall` | S3 | Configure UFW allowlist |
+| 9 | `tailscale` | S4 | Set up Tailscale routing |
+| 10 | `cadence` | S7 | Deploy ambient insight pipeline |
+| 11 | `buildlog` | S8 | Install buildlog for ambient learning |
+| 12 | `qortex` | -- | Install qortex CLI, deploy OTEL env, seed exchange dirs, memory + learning config, optional HTTP service |
+| 13 | `sandbox` | S10 | Build sandbox image, configure `openclaw.json` (dual-container) |
+| 14 | `sync-gate` | S9 | Deploy sync helper scripts |
 
-The ordering is intentional: secrets must be available before anything else, overlay must exist before the gateway starts (it depends on `workspace.mount`), Docker must be ready before the gateway gets `SupplementaryGroups=docker`, and the sandbox role needs the workspace built.
+The ordering is intentional: secrets must be available before anything else, overlay must exist before the gateway starts (it depends on `workspace.mount`), Docker must be ready before Memgraph/pgvector containers can start, Memgraph and pgvector must be running before qortex (which connects to them), and the sandbox role needs the workspace built.
 
 !!! note
-    Roles with `when:` conditions: `docker` and `sandbox` require `docker_enabled` (default: true), `sync-gate` requires overlay to be active (not yolo-unsafe).
+    Roles with `when:` conditions: `docker` and `sandbox` require `docker_enabled` (default: true), `memgraph` requires `memgraph_enabled` (default: false), `pgvector` requires `pgvector_enabled` (default: false), `sync-gate` requires overlay to be active (not yolo-unsafe).
 
 ## Port Forwarding
 

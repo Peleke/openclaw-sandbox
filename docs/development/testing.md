@@ -1,6 +1,6 @@
 # Testing
 
-Bilrost has comprehensive test suites for every Ansible role. Tests are split into fast offline validation and full VM deployment checks.
+Bilrost has test suites for every Ansible role. Tests are split into fast offline validation and full VM deployment checks.
 
 ## Test Structure
 

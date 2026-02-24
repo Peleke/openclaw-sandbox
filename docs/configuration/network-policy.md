@@ -30,7 +30,7 @@ The VM runs a UFW (Uncomplicated Firewall) with a default-deny policy in both di
 
 ### Outbound
 
-**HTTPS (TCP 443):** Required for LLM API calls (Anthropic, OpenAI, Google AI, OpenRouter), GitHub API (`gh` commands), npm/PyPI package downloads, and messaging API calls (Slack, Discord, Telegram).
+**HTTPS (TCP 443):** Required for LLM API calls (Anthropic, OpenAI, Google AI, OpenRouter), GitHub API (`gh` commands), npm/PyPI package downloads, messaging API calls (Slack, Discord, Telegram), and the LinWheel API (LinkedIn content management).
 
 **HTTP (TCP 80):** Required for APT package repository updates. Ubuntu mirrors serve package metadata over HTTP.
 
@@ -103,6 +103,8 @@ firewall_allowed_domains:
   - api.slack.com
   - discord.com
   - discordapp.com
+  - linwheel.io
+  - www.linwheel.io
 ```
 
 !!! tip "The HTTPS rule is port-based, not domain-based"

@@ -19,6 +19,9 @@
     # Restart the gateway service
     bilrost restart
 
+    # Upgrade qortex in the VM
+    bilrost upgrade -q ~/Projects/qortex
+
     # Sync overlay changes to host
     bilrost sync
 
@@ -314,6 +317,60 @@ Running `bootstrap.sh` again on an existing VM skips creation and just re-runs t
 
 !!! tip
     You don't need to pass `--openclaw` when re-provisioning an existing VM. The mount paths are already baked into the Lima config.
+
+## Bilrost CLI Commands
+
+### `bilrost upgrade`
+
+Build, deploy, and install qortex wheels into the sandbox. Replaces ad-hoc wheel copying and manual `uv tool install` commands.
+
+```bash
+# Build from local source, deploy, restart gateway
+bilrost upgrade -q ~/Projects/qortex
+
+# Deploy pre-built wheels (skip build step)
+bilrost upgrade -w ~/Projects/qortex/dist
+
+# Install latest dev build from Test PyPI
+bilrost upgrade --dev
+
+# Install without restarting the gateway
+bilrost upgrade -q ~/Projects/qortex --skip-restart
+```
+
+| Flag | Description |
+|------|-------------|
+| `-q`, `--qortex-dir` | Path to local qortex source directory |
+| `-w`, `--wheel-dir` | Path to pre-built wheels directory |
+| `--dev` | Install latest dev build from Test PyPI |
+| `--skip-restart` | Install without restarting the gateway |
+
+### `bilrost restart`
+
+Restart the OpenClaw gateway service in the VM. Use after config changes or manual edits to `openclaw.json`.
+
+```bash
+bilrost restart
+```
+
+### `bilrost up` flags
+
+The `bilrost up` command accepts flags to enable optional subsystems:
+
+| Flag | Description |
+|------|-------------|
+| `--fresh` | Destroy existing VM first, then reprovision |
+| `--memgraph` | Enable Memgraph graph database (overrides profile setting) |
+| `--pgvector` | Enable pgvector PostgreSQL backend (overrides profile setting) |
+| `--qortex-serve` | Enable qortex HTTP service (overrides profile setting) |
+
+```bash
+# Enable all optional backends
+bilrost up --memgraph --pgvector --qortex-serve
+
+# Fresh provision with Memgraph
+bilrost up --fresh --memgraph
+```
 
 ## Full Examples
 

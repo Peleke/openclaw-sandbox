@@ -4,15 +4,17 @@
 
 ## What It Does
 
-The qortex role handles seven things:
+The qortex role handles nine things:
 
-1. **CLI installation** via `uv tool install qortex[mcp,vec-sqlite,observability,nlp]` (includes spaCy for concept extraction)
+1. **CLI installation** via `uv tool install qortex[mcp,vec-sqlite,observability,nlp]` (includes spaCy for concept extraction). When `qortex_serve_enabled` is true, the `server` extra is appended automatically. When pgvector is the vector backend, the `vec-pgvector` extra is also included.
 2. **Concept extraction setup**: downloads the spaCy `en_core_web_sm` model when `qortex_extraction` is `spacy` (default)
 3. **Seed exchange directories** for structured data handoff (`~/.qortex/seeds/{pending,processed,failed}`)
 4. **Signals directory** for projection output (`~/.qortex/signals/`)
 5. **Buildlog interop config** (`~/.buildlog/interop.yaml`) linking buildlog to qortex's seed pipeline
 6. **OTEL environment** (`/etc/openclaw/qortex-otel.env` + `/etc/profile.d/qortex-otel.sh`) so qortex exports traces and metrics to the host collector
 7. **Gateway config injection** (via `fix-vm-paths.yml`): injects `memorySearch` with `provider: "qortex"` and `learning` config into `openclaw.json` so the gateway uses qortex for both memory tools and bandit-based tool selection
+8. **HTTP service** (`qortex serve`): when `qortex_serve_enabled` is true, deploys a persistent REST API server as a systemd service with API key + HMAC-SHA256 authentication
+9. **PgVector integration**: when `qortex_vec_backend` is `pgvector`, the qortex HTTP service connects to the pgvector PostgreSQL container for vector search instead of the default SQLite backend
 
 ## Setup
 
@@ -45,6 +47,120 @@ To enable Memgraph port forwarding for graph queries:
 | 7687 | Bolt protocol (Cypher queries) |
 | 3000 | Memgraph Lab (web UI) |
 | 7444 | Monitoring |
+
+### With PgVector (Vector Search Backend)
+
+To use PostgreSQL + pgvector instead of the default SQLite vector backend:
+
+```bash
+# Using the Bilrost CLI
+bilrost up --pgvector --qortex-serve
+
+# Using bootstrap.sh directly
+./bootstrap.sh --openclaw ~/Projects/openclaw \
+  -e "pgvector_enabled=true" \
+  -e "qortex_serve_enabled=true" \
+  -e "qortex_vec_backend=pgvector"
+```
+
+This deploys a persistent PostgreSQL container with the pgvector extension (`pgvector/pgvector:pg16`) and configures the qortex HTTP service to use it as the vector store. The pgvector role:
+
+1. Creates a Docker Compose project at `/opt/pgvector`
+2. Starts a PostgreSQL container (`qortex-pgvector`) with host networking
+3. Initializes the `vector` extension via `CREATE EXTENSION IF NOT EXISTS vector`
+4. Stores data in a named Docker volume (`pgvector_data`) for persistence across restarts
+5. Health-checks via `pg_isready` with retries
+
+| Setting | Default |
+|---------|---------|
+| Image | `pgvector/pgvector:pg16` |
+| Port | `5432` |
+| User | `qortex` |
+| Password | `qortex` |
+| Database | `qortex` |
+| DSN | `postgresql://qortex:qortex@localhost:5432/qortex` |
+
+!!! note "PgVector requires Docker"
+    The pgvector role depends on Docker CE being installed (`docker_enabled: true`, which is the default). If you used `--no-docker`, pgvector cannot be enabled.
+
+## Qortex HTTP Service
+
+When `qortex_serve_enabled` is true, the role deploys a persistent REST API server as a systemd service (`qortex.service`). This provides HTTP endpoints for vector search, knowledge graph queries, and learning pipeline operations.
+
+### Enabling the HTTP Service
+
+```bash
+# Using the Bilrost CLI
+bilrost up --qortex-serve
+
+# Using bootstrap.sh
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_serve_enabled=true"
+
+# With pgvector backend
+bilrost up --pgvector --qortex-serve
+```
+
+### API Authentication
+
+The qortex HTTP service supports two authentication methods:
+
+**API Key Authentication**
+
+On first provision, a 256-bit random API key is generated via `openssl rand -hex 32` and stored at `/etc/openclaw/qortex-api-key` (mode `0640`). The key is idempotent -- it is only generated if the file does not already exist, so reprovisioning preserves the original key. Clients include the key in the `Authorization` header:
+
+```
+Authorization: Bearer <api-key>
+```
+
+**HMAC-SHA256 Authentication**
+
+For request signing, set `qortex_hmac_secret` to a shared secret. Clients sign the request body with HMAC-SHA256 and include the signature in the `X-Signature` header.
+
+### Systemd Service
+
+The `qortex.service` unit runs as the Ansible provisioning user with hardened settings:
+
+```ini
+[Unit]
+Description=Qortex Knowledge Graph Service
+After=network-online.target docker.service  # docker.service only when pgvector_enabled
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/openclaw/qortex.env
+EnvironmentFile=/etc/openclaw/qortex-otel.env  # only when qortex_otel_enabled
+ExecStart=~/.local/bin/qortex serve --host 0.0.0.0 --port 8400
+NoNewPrivileges=true
+ProtectSystem=strict
+```
+
+The environment file (`/etc/openclaw/qortex.env`) contains:
+
+| Variable | Value | Condition |
+|----------|-------|-----------|
+| `QORTEX_VEC` | `sqlite` or `pgvector` | Always |
+| `PGVECTOR_DSN` | `postgresql://qortex:qortex@localhost:5432/qortex` | When `qortex_vec_backend=pgvector` |
+| `QORTEX_API_KEYS` | Auto-generated 256-bit key | When API key file exists |
+| `QORTEX_HMAC_SECRET` | User-provided secret | When `qortex_hmac_secret` is set |
+| `QORTEX_EXTRACTION` | `spacy`, `llm`, or `none` | Always |
+| `MEMGRAPH_HOST`, `_PORT`, `_USER`, `_PASSWORD` | Memgraph connection details | When `memgraph_enabled` |
+| OTEL variables | OTEL endpoint and protocol | When `qortex_otel_enabled` |
+| `QORTEX_PROMETHEUS_PORT` | `9090` | When `qortex_prometheus_enabled` |
+
+### HTTP Service Verification
+
+```bash
+# Check qortex HTTP service is running
+limactl shell openclaw-sandbox -- systemctl status qortex
+
+# Check the API key
+limactl shell openclaw-sandbox -- sudo cat /etc/openclaw/qortex-api-key
+
+# Test the endpoint (from inside the VM)
+limactl shell openclaw-sandbox -- bash -c \
+  'curl -s -H "Authorization: Bearer $(sudo cat /etc/openclaw/qortex-api-key)" \
+   http://localhost:8400/health'
+```
 
 ## Directory Structure
 
@@ -98,6 +214,14 @@ This enables buildlog to:
 | `qortex_otel_protocol` | `http/protobuf` | OTEL exporter wire protocol |
 | `qortex_prometheus_enabled` | `true` | Expose a Prometheus metrics endpoint for Grafana |
 | `qortex_prometheus_port` | `9090` | Port for Prometheus scraping |
+| `qortex_serve_enabled` | `false` | Enable the qortex HTTP service (REST API server) |
+| `qortex_serve_port` | `8400` | HTTP service listen port |
+| `qortex_serve_host` | `0.0.0.0` | HTTP service bind address |
+| `qortex_vec_backend` | `sqlite` | Vector search backend: `sqlite` or `pgvector` |
+| `qortex_pgvector_dsn` | `postgresql://qortex:qortex@localhost:5432/qortex` | PostgreSQL connection string for pgvector backend |
+| `qortex_api_keys` | `""` (auto-generated on first provision) | Comma-separated API keys for HTTP service auth |
+| `qortex_hmac_secret` | `""` | Shared secret for HMAC-SHA256 request signing |
+| `qortex_wheel_dir` | `""` | Path to pre-built wheels directory (empty = install from PyPI) |
 
 Override with `-e`:
 
@@ -113,6 +237,12 @@ Override with `-e`:
 
 # Disable extraction entirely
 ./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_extraction=none"
+
+# Enable HTTP service with pgvector backend
+./bootstrap.sh --openclaw ~/Projects/openclaw \
+  -e "qortex_serve_enabled=true" \
+  -e "qortex_vec_backend=pgvector" \
+  -e "pgvector_enabled=true"
 ```
 
 ## Observability (OTEL + Prometheus)
@@ -197,7 +327,7 @@ bilrost upgrade -q ~/Projects/qortex
 
 This:
 
-1. Builds wheels for `qortex`, `qortex-online`, `qortex-observe`, and `qortex-ingest`
+1. Builds wheels for `qortex`, `qortex-online`, `qortex-observe`, `qortex-ingest`, and `qortex-learning`
 2. SCPs them to the VM
 3. Installs with `uv tool install qortex[all]` plus all namespace packages
 4. Ensures the spaCy `en_core_web_sm` model is installed
@@ -211,12 +341,21 @@ bilrost upgrade -w ~/Projects/qortex/dist
 
 Skips the build step. Useful when you've already built wheels or received them from CI.
 
+### From Test PyPI (development builds)
+
+```bash
+bilrost upgrade --dev
+```
+
+Installs the latest pre-release build from Test PyPI. Useful for testing CI-published packages without building locally. Mutually exclusive with `--qortex-dir` and `--wheel-dir`.
+
 ### Options
 
 | Flag | Description |
 |------|-------------|
 | `-q`, `--qortex-dir` | Path to local qortex source directory |
 | `-w`, `--wheel-dir` | Path to pre-built wheels directory |
+| `--dev` | Install latest dev build from Test PyPI |
 | `--skip-restart` | Install without restarting the gateway |
 
 ## Verification Commands
@@ -236,6 +375,12 @@ limactl shell openclaw-sandbox -- qortex --version
 
 # Check uv tool list
 limactl shell openclaw-sandbox -- ~/.local/bin/uv tool list | grep qortex
+
+# Check qortex HTTP service (when qortex_serve_enabled)
+limactl shell openclaw-sandbox -- systemctl status qortex
+
+# Check pgvector container (when pgvector_enabled)
+limactl shell openclaw-sandbox -- docker ps | grep qortex-pgvector
 ```
 
 ## Troubleshooting
@@ -264,6 +409,21 @@ bilrost up  # or ./bootstrap.sh to re-provision
 bilrost destroy -f
 ./bootstrap.sh --openclaw ~/Projects/openclaw --memgraph
 ```
+
+### Qortex HTTP service not starting
+
+1. Check the service status: `limactl shell openclaw-sandbox -- systemctl status qortex`
+2. Check the journal: `limactl shell openclaw-sandbox -- journalctl -u qortex --no-pager -n 50`
+3. Verify the environment file: `limactl shell openclaw-sandbox -- sudo cat /etc/openclaw/qortex.env`
+4. Verify the API key file exists: `limactl shell openclaw-sandbox -- sudo ls -la /etc/openclaw/qortex-api-key`
+5. Ensure the `server` extra was installed: `limactl shell openclaw-sandbox -- qortex serve --help`
+
+### PgVector container not running
+
+1. Check container status: `limactl shell openclaw-sandbox -- docker ps -a | grep pgvector`
+2. Check container logs: `limactl shell openclaw-sandbox -- docker logs qortex-pgvector`
+3. Verify the compose file: `limactl shell openclaw-sandbox -- cat /opt/pgvector/docker-compose.yml`
+4. Restart the container: `limactl shell openclaw-sandbox -- sudo docker compose -f /opt/pgvector/docker-compose.yml restart`
 
 ## OpenClaw memory backend (qortex)
 
