@@ -224,20 +224,25 @@
 - name: Detect platform mismatch (reinstall if built on different platform)
   when: node_modules.stat.exists and not (linux_marker.stat.exists | default(false))
   block:
-    # Run cleanup as unprivileged user so OverlayFS whiteouts are user-owned.
-    # Root-owned whiteouts block unprivileged bun install from creating node_modules.
+    # Cleanup runs as root because OverlayFS lower files (from virtiofs host mount)
+    # are root-owned from the kernel's perspective. Only root can delete them and
+    # create the whiteout entries that hide the macOS node_modules.
     - name: Clear existing node_modules (platform mismatch)
-      become: false
       ansible.builtin.file:
         path: "{{ workspace_path }}/node_modules"
         state: absent
 
     - name: Clear bun lockb (to force fresh install)
-      become: false
       ansible.builtin.file:
         path: "{{ workspace_path }}/bun.lockb"
         state: absent
       failed_when: false
+
+    # Remount overlay to flush stale dentry cache after cleanup.
+    # Without this, subsequent mkdir can get ESTALE on the whiteout path.
+    - name: Remount workspace overlay (flush dentries after cleanup)
+      ansible.builtin.command: mount -o remount {{ workspace_path }}
+      changed_when: false
 
 - name: Re-check node_modules after potential cleanup
   ansible.builtin.stat:
@@ -252,13 +257,16 @@
       stat:
         exists: false
 
+# Install runs as root because OverlayFS whiteouts from cleanup are root-owned.
+# Only root can create new entries over root-owned whiteouts in the merged view.
+# After install, chown the result to the unprivileged user for gateway access.
 - name: Install OpenClaw dependencies (using bun)
-  become: false
   when: not node_modules_recheck.stat.exists
   ansible.builtin.shell: |
     export PATH="{{ user_home }}/.bun/bin:$PATH"
     cd {{ workspace_path }} && bun install
     touch {{ workspace_path }}/node_modules/.linux-installed
+    chown -R {{ ansible_user }}:{{ ansible_user }} {{ workspace_path }}/node_modules
   environment:
     HOME: "{{ user_home }}"
   register: bun_install_result
@@ -275,11 +283,11 @@
   register: dist_exists
 
 - name: Build OpenClaw
-  become: false
   when: not dist_exists.stat.exists
   ansible.builtin.shell: |
     export PATH="{{ user_home }}/.bun/bin:$PATH"
     cd {{ workspace_path }} && bun run build
+    chown -R {{ ansible_user }}:{{ ansible_user }} {{ workspace_path }}/dist
   environment:
     HOME: "{{ user_home }}"
   args:
