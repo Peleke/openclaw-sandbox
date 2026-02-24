@@ -144,6 +144,19 @@
         state: started
         daemon_reload: true
 
+    # Detect stale overlay (ESTALE from previous provision/reboot)
+    - name: Probe workspace overlay for stale handle
+      ansible.builtin.command: stat {{ overlay_workspace_path }}
+      register: overlay_probe
+      changed_when: false
+      failed_when: false
+
+    - name: Remount workspace overlay (stale handle detected)
+      when: overlay_probe.rc != 0
+      ansible.builtin.systemd:
+        name: workspace.mount
+        state: restarted
+
     - name: Enable and start obsidian overlay (if vault mounted)
       when: obsidian_mount_check.stat.exists
       ansible.builtin.systemd:
