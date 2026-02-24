@@ -224,12 +224,16 @@
 - name: Detect platform mismatch (reinstall if built on different platform)
   when: node_modules.stat.exists and not (linux_marker.stat.exists | default(false))
   block:
+    # Run cleanup as unprivileged user so OverlayFS whiteouts are user-owned.
+    # Root-owned whiteouts block unprivileged bun install from creating node_modules.
     - name: Clear existing node_modules (platform mismatch)
+      become: false
       ansible.builtin.file:
         path: "{{ workspace_path }}/node_modules"
         state: absent
 
     - name: Clear bun lockb (to force fresh install)
+      become: false
       ansible.builtin.file:
         path: "{{ workspace_path }}/bun.lockb"
         state: absent
