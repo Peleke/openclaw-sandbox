@@ -200,10 +200,20 @@
 
 # Install OpenClaw dependencies
 # Fix: Detect platform mismatch (macOS modules don't work on Linux)
+# Note: stat can throw ESTALE (errno 116) on stale OverlayFS handles,
+# so we use shell ls as a fallback when stat fails.
 - name: Check if node_modules exists
   ansible.builtin.stat:
     path: "{{ workspace_path }}/node_modules"
   register: node_modules
+  ignore_errors: true
+
+- name: Handle stale file handle (treat as missing)
+  when: node_modules is failed
+  ansible.builtin.set_fact:
+    node_modules:
+      stat:
+        exists: false
 
 - name: Check node_modules platform marker
   when: node_modules.stat.exists
@@ -229,6 +239,14 @@
   ansible.builtin.stat:
     path: "{{ workspace_path }}/node_modules"
   register: node_modules_recheck
+  ignore_errors: true
+
+- name: Handle stale file handle on recheck
+  when: node_modules_recheck is failed
+  ansible.builtin.set_fact:
+    node_modules_recheck:
+      stat:
+        exists: false
 
 - name: Install OpenClaw dependencies (using bun)
   become: false
