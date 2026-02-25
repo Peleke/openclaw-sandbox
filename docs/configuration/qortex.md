@@ -14,7 +14,8 @@ The qortex role handles nine things:
 6. **OTEL environment** (`/etc/openclaw/qortex-otel.env` + `/etc/profile.d/qortex-otel.sh`) so qortex exports traces and metrics to the host collector
 7. **Gateway config injection** (via `fix-vm-paths.yml`): injects `memorySearch` with `provider: "qortex"` and `learning` config into `openclaw.json` so the gateway uses qortex for both memory tools and bandit-based tool selection
 8. **HTTP service** (`qortex serve`): when `qortex_serve_enabled` is true, deploys a persistent REST API server as a systemd service with API key + HMAC-SHA256 authentication
-9. **PgVector integration**: when `qortex_vec_backend` is `pgvector`, the qortex HTTP service connects to the pgvector PostgreSQL container for vector search instead of the default SQLite backend
+9. **MCP HTTP service** (`qortex mcp-serve`): when `qortex_mcp_enabled` is true, deploys a second systemd service running the MCP server over Streamable HTTP transport, replacing the stdio subprocess model for gateway connections
+10. **PgVector integration**: when `qortex_vec_backend` is `pgvector`, the qortex HTTP service connects to the pgvector PostgreSQL container for vector search instead of the default SQLite backend
 
 ## Setup
 
@@ -162,6 +163,96 @@ limactl shell openclaw-sandbox -- bash -c \
    http://localhost:8400/health'
 ```
 
+## Qortex MCP HTTP Service
+
+When `qortex_mcp_enabled` is true (automatically tracks `qortex_serve_enabled`), the role deploys a second systemd service (`qortex-mcp.service`) that runs the qortex MCP server over Streamable HTTP transport. The gateway connects here for memory search and learning pipeline operations instead of spawning stdio subprocesses.
+
+### Why Two Services?
+
+The REST API (`qortex.service`, port 8400) serves framework adapters (Agno, AutoGen, LangChain) that speak standard HTTP with API key auth. The MCP service (`qortex-mcp.service`, port 8401) speaks the MCP Streamable HTTP protocol that the gateway's `StreamableHTTPClientTransport` expects. Separating them keeps auth and protocol concerns clean.
+
+### Enabling the MCP Service
+
+The MCP service is automatically enabled when the HTTP service is enabled:
+
+```bash
+# Using the Bilrost CLI
+bilrost up --qortex-serve
+
+# Using bootstrap.sh
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_serve_enabled=true"
+```
+
+To enable MCP independently (uncommon):
+
+```bash
+./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_mcp_enabled=true"
+```
+
+### Systemd Service
+
+The `qortex-mcp.service` unit:
+
+```ini
+[Unit]
+Description=Qortex MCP Server (Streamable HTTP)
+After=network-online.target qortex.service
+
+[Service]
+Type=simple
+Environment=FASTMCP_HOST=0.0.0.0
+Environment=FASTMCP_PORT=8401
+EnvironmentFile=-/etc/openclaw/qortex.env
+EnvironmentFile=-/etc/openclaw/qortex-otel.env
+ExecStart=~/.local/bin/qortex mcp-serve --transport streamable-http
+```
+
+FastMCP reads `FASTMCP_HOST` and `FASTMCP_PORT` via pydantic `BaseSettings` (env prefix `FASTMCP_`). The Streamable HTTP endpoint is served at `/mcp` (e.g., `http://localhost:8401/mcp`).
+
+### Gateway Config Injection
+
+When the MCP HTTP service is enabled, the gateway role's `fix-vm-paths.yml` switches `memorySearch` and `learning` config from stdio transport to HTTP transport:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "memorySearch": {
+        "qortex": {
+          "transport": "http",
+          "http": { "baseUrl": "http://localhost:8401/mcp" }
+        }
+      }
+    }
+  },
+  "learning": {
+    "qortex": {
+      "transport": "http",
+      "http": { "baseUrl": "http://localhost:8401/mcp" }
+    }
+  }
+}
+```
+
+No authentication is needed on the MCP endpoint — it is an internal service within the VM.
+
+### MCP Service Verification
+
+```bash
+# Check qortex MCP service is running
+limactl shell openclaw-sandbox -- systemctl status qortex-mcp
+
+# Check the MCP endpoint responds
+limactl shell openclaw-sandbox -- curl -s http://localhost:8401/mcp
+
+# Check both services are running
+limactl shell openclaw-sandbox -- systemctl status qortex qortex-mcp
+
+# Check the gateway sees HTTP transport
+limactl shell openclaw-sandbox -- bash -c \
+  'jq ".agents.defaults.memorySearch.qortex" ~/.openclaw/openclaw.json'
+```
+
 ## Directory Structure
 
 After provisioning, the VM has:
@@ -221,6 +312,9 @@ This enables buildlog to:
 | `qortex_pgvector_dsn` | `postgresql://qortex:qortex@localhost:5432/qortex` | PostgreSQL connection string for pgvector backend |
 | `qortex_api_keys` | `""` (auto-generated on first provision) | Comma-separated API keys for HTTP service auth |
 | `qortex_hmac_secret` | `""` | Shared secret for HMAC-SHA256 request signing |
+| `qortex_mcp_enabled` | `false` | Enable qortex MCP HTTP service (Streamable HTTP transport for gateway) |
+| `qortex_mcp_port` | `8401` | MCP HTTP service listen port |
+| `qortex_mcp_host` | `0.0.0.0` | MCP HTTP service bind address |
 | `qortex_wheel_dir` | `""` | Path to pre-built wheels directory (empty = install from PyPI) |
 
 Override with `-e`:
@@ -417,6 +511,14 @@ bilrost destroy -f
 3. Verify the environment file: `limactl shell openclaw-sandbox -- sudo cat /etc/openclaw/qortex.env`
 4. Verify the API key file exists: `limactl shell openclaw-sandbox -- sudo ls -la /etc/openclaw/qortex-api-key`
 5. Ensure the `server` extra was installed: `limactl shell openclaw-sandbox -- qortex serve --help`
+
+### Qortex MCP service not starting
+
+1. Check the service status: `limactl shell openclaw-sandbox -- systemctl status qortex-mcp`
+2. Check the journal: `limactl shell openclaw-sandbox -- journalctl -u qortex-mcp --no-pager -n 50`
+3. Verify FastMCP is installed: `limactl shell openclaw-sandbox -- qortex mcp-serve --help`
+4. Test the endpoint manually: `limactl shell openclaw-sandbox -- curl -s http://localhost:8401/mcp`
+5. Verify the gateway config has HTTP transport: `limactl shell openclaw-sandbox -- bash -c 'jq ".agents.defaults.memorySearch.qortex.transport" ~/.openclaw/openclaw.json'`
 
 ### PgVector container not running
 

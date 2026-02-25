@@ -140,6 +140,9 @@ Configuration flows through three layers:
 | `qortex_pgvector_dsn` | `postgresql://qortex:qortex@localhost:5432/qortex` | `/etc/openclaw/qortex.env` | PostgreSQL connection string for pgvector | `-e` |
 | `qortex_api_keys` | `""` (auto-generated) | `/etc/openclaw/qortex.env` | API keys for HTTP service auth | `-e` |
 | `qortex_hmac_secret` | `""` | `/etc/openclaw/qortex.env` | HMAC-SHA256 shared secret | `-e` |
+| `qortex_mcp_enabled` | `false` | `/etc/systemd/system/qortex-mcp.service` | Enable qortex MCP HTTP service (Streamable HTTP for gateway) | `-e "qortex_mcp_enabled=true"` |
+| `qortex_mcp_port` | `8401` | `/etc/systemd/system/qortex-mcp.service` | MCP HTTP service listen port | `-e` |
+| `qortex_mcp_host` | `0.0.0.0` | `/etc/systemd/system/qortex-mcp.service` | MCP HTTP service bind address | `-e` |
 
 ### PgVector Role (`ansible/roles/pgvector/defaults/main.yml`)
 
@@ -229,6 +232,7 @@ The playbook executes roles in this order:
 | `/etc/openclaw/qortex-otel.env` | Qortex OTEL + Prometheus env (systemd EnvironmentFile) | qortex role |
 | `/etc/profile.d/qortex-otel.sh` | Qortex OTEL env for login/non-login shells | qortex role |
 | `/etc/systemd/system/qortex.service` | Qortex HTTP service unit (when `qortex_serve_enabled`) | qortex role |
+| `/etc/systemd/system/qortex-mcp.service` | Qortex MCP Streamable HTTP service (when `qortex_mcp_enabled`) | qortex role |
 | `/etc/openclaw/qortex.env` | Qortex HTTP service environment (vec backend, API keys) | qortex role |
 | `/etc/openclaw/qortex-api-key` | Auto-generated API key for qortex HTTP auth | qortex role |
 | `/opt/pgvector/docker-compose.yml` | PgVector Docker Compose config (when `pgvector_enabled`) | pgvector role |
