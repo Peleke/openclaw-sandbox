@@ -187,11 +187,10 @@
       ansible.builtin.set_fact:
         qortex_api_key: "{{ (_gw_qortex_api_key_file.content | b64decode).strip() }}"
 
-    # When qortex serve mode is enabled AND the gateway config schema supports
+    # When qortex MCP HTTP service is enabled AND the gateway config schema supports
     # HTTP transport keys, switch memorySearch and learning to HTTP transport.
-    # NOTE: Builds after 2026-02-24 reject 'transport' and 'http' as unrecognized
-    # keys under qortex config. Gate behind qortex_http_transport (default: false).
-    - name: Switch memorySearch to HTTP transport (when qortex serve + http transport enabled)
+    # Points at qortex-mcp.service (streamable-http on port 8401) NOT qortex.service (REST on 8400).
+    - name: Switch memorySearch to HTTP transport (when qortex MCP HTTP enabled)
       ansible.builtin.set_fact:
         openclaw_config: >-
           {{ openclaw_config | combine({
@@ -200,38 +199,34 @@
                 'memorySearch': ((openclaw_config.agents.defaults | default({})).memorySearch | default({})) | combine({
                   'qortex': (((openclaw_config.agents.defaults | default({})).memorySearch | default({})).qortex | default({})) | combine({
                     'transport': 'http',
-                    'http': ({
-                      'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string
-                    }) | combine(
-                      {'headers': {'Authorization': 'Bearer ' ~ qortex_api_key}} if (qortex_api_key | default('') | length > 0) else {}
-                    )
+                    'http': {
+                      'baseUrl': 'http://localhost:' ~ (qortex_mcp_port | default(8401)) | string ~ '/mcp'
+                    }
                   })
                 })
               })
             })
           }, recursive=true) }}
       when: >
-        (qortex_serve_enabled | default(false) | bool) and
+        (qortex_mcp_enabled | default(false) | bool) and
         (qortex_http_transport | default(false) | bool) and
         ((openclaw_config.agents.defaults | default({})).memorySearch is defined)
 
-    - name: Switch learning to HTTP transport (when qortex serve + http transport enabled)
+    - name: Switch learning to HTTP transport (when qortex MCP HTTP enabled)
       ansible.builtin.set_fact:
         openclaw_config: >-
           {{ openclaw_config | combine({
             'learning': (openclaw_config.learning | default({})) | combine({
               'qortex': ((openclaw_config.learning | default({})).qortex | default({})) | combine({
                 'transport': 'http',
-                'http': ({
-                  'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string
-                }) | combine(
-                  {'headers': {'Authorization': 'Bearer ' ~ qortex_api_key}} if (qortex_api_key | default('') | length > 0) else {}
-                )
+                'http': {
+                  'baseUrl': 'http://localhost:' ~ (qortex_mcp_port | default(8401)) | string ~ '/mcp'
+                }
               })
             })
           }, recursive=true) }}
       when: >
-        (qortex_serve_enabled | default(false) | bool) and
+        (qortex_mcp_enabled | default(false) | bool) and
         (qortex_http_transport | default(false) | bool) and
         (openclaw_config.learning is defined)
 
@@ -370,4 +365,9 @@
           {% endif %}
           {% if _discovery_env | default({}) | length > 0 %}
           - discovery env: {{ _discovery_env | to_json }}
+          {% endif %}
+          {% if (qortex_mcp_enabled | default(false) | bool) and (qortex_http_transport | default(false) | bool) %}
+          - qortex transport: HTTP → http://localhost:{{ qortex_mcp_port | default(8401) }}/mcp (streamable-http)
+          {% else %}
+          - qortex transport: stdio (subprocess)
           {% endif %}

@@ -10,3 +10,10 @@
     name: qortex
     state: restarted
     enabled: true
+
+- name: Restart qortex-mcp
+  become: true
+  ansible.builtin.systemd:
+    name: qortex-mcp
+    state: restarted
+    enabled: true

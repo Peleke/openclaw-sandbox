@@ -20,6 +20,6 @@ gateway_plugin_entries:
 sandbox_tool_allow_wildcard: true
 
 # Enable qortex HTTP transport injection into memorySearch and learning config.
-# Newer gateway builds (2026-02-24+) reject 'transport' and 'http' keys under
-# qortex config. Set to true only for builds that support HTTP transport.
-qortex_http_transport: false
+# Requires openclaw builds with feat/qortex-http-transport (Zod schemas accept
+# transport + http keys). Set to false for older builds that reject them.
+qortex_http_transport: true

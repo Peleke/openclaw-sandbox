@@ -53,6 +53,7 @@ def build_extra_vars(profile: SandboxProfile) -> list[str]:
         ("pgvector_enabled", str(profile.mode.pgvector).lower()),
         ("qortex_vec_backend", "pgvector" if profile.mode.pgvector else "sqlite"),
         ("qortex_serve_enabled", str(profile.mode.qortex_serve).lower()),
+        ("qortex_mcp_enabled", str(profile.mode.qortex_serve).lower()),
     ]
 
     argv: list[str] = []
