@@ -414,6 +414,8 @@
       {% endif %}
       # Load secrets from /etc/openclaw/secrets.env (- prefix = don't fail if missing)
       EnvironmentFile=-/etc/openclaw/secrets.env
+      # Load qortex env vars (graph backend, extraction, vec config)
+      EnvironmentFile=-/etc/openclaw/qortex.env
       # Load qortex OTEL env vars (- prefix = don't fail if missing)
       EnvironmentFile=-/etc/openclaw/qortex-otel.env
       {% if overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool) %}
