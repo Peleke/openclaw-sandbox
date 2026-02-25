@@ -93,11 +93,15 @@ The gateway is a Node.js process managed by systemd (`openclaw-gateway.service`)
 - Gets Docker access via `SupplementaryGroups=docker` (no re-login needed)
 - Depends on `workspace.mount` when overlay is active
 
-### Qortex HTTP Service (Optional)
+### Qortex Services (Optional)
 
-When `qortex_serve_enabled` is true, the qortex role deploys a persistent REST API server as a systemd service (`qortex.service`). This provides HTTP endpoints for vector search and knowledge graph queries, independent of the MCP server used by the gateway.
+When `qortex_serve_enabled` is true, the qortex role deploys two systemd services:
 
-The service supports API key authentication (auto-generated on first provision) and optional HMAC-SHA256 request signing. It can use either SQLite (default) or pgvector as its vector backend.
+- **`qortex.service`** (port 8400): REST API server for framework adapters (Agno, AutoGen, LangChain, etc.). Supports API key authentication (auto-generated on first provision) and optional HMAC-SHA256 request signing. Can use either SQLite (default) or pgvector as its vector backend.
+
+- **`qortex-mcp.service`** (port 8401): MCP Streamable HTTP server for gateway connections. The gateway connects here for memory search and learning pipeline operations via `StreamableHTTPClientTransport`. Uses FastMCP 3.x with the `streamable-http` transport, endpoint at `/mcp`. No authentication required (internal service).
+
+The MCP HTTP service replaces the previous stdio subprocess model, where the gateway spawned `qortex mcp-serve` as a child process for each connection.
 
 ### Database Services (Optional)
 

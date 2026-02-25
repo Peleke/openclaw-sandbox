@@ -47,6 +47,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `--qortex-serve` flag on `bilrost up`
 - Environment file (`/etc/openclaw/qortex.env`) with vec backend, auth, Memgraph, and OTEL config
 
+**Qortex MCP HTTP Service**
+- New `qortex-mcp.service` systemd unit: runs `qortex mcp-serve --transport streamable-http` on port 8401
+- Dual-service architecture: REST API (`qortex.service`, port 8400) + MCP Streamable HTTP (`qortex-mcp.service`, port 8401)
+- Gateway connects via MCP Streamable HTTP instead of stdio subprocess pipes
+- Config injection: `http://localhost:8401/mcp` as baseUrl for `memorySearch.qortex` and `learning.qortex`
+- New Ansible defaults: `qortex_mcp_enabled`, `qortex_mcp_port`, `qortex_mcp_host`
+- `ansible_runner.py` passes `qortex_mcp_enabled` (tracks `qortex_serve_enabled`)
+
 **Extraction Config + Bilrost Upgrade (PR #99)**
 - `qortex_extraction` config variable for concept extraction strategy (`spacy`, `llm`, `none`)
 - `bilrost upgrade --dev` for installing latest dev builds from Test PyPI
