@@ -105,6 +105,38 @@
           }, recursive=true) }}
       when: _ms is defined
 
+    # Enable plugins listed in gateway_plugin_entries (data-driven, not hardcoded).
+    # Without this, plugins are discovered but never loaded (layer 3 gate).
+    - name: Enable configured plugins
+      when: (gateway_plugin_entries | default([])) | length > 0
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'plugins': (openclaw_config.plugins | default({})) | combine({
+              'entries': ((openclaw_config.plugins | default({})).entries | default({})) | combine(
+                dict(gateway_plugin_entries | product([{'enabled': true}]))
+              )
+            })
+          }, recursive=true) }}
+
+    # Allow all tools through the sandbox policy filter (layer 8 gate).
+    # Without this, DEFAULT_TOOL_ALLOW in sandbox/constants.js kills all
+    # plugin tools silently — only 15 core tools survive.
+    # Gated behind sandbox_tool_allow_wildcard (default: true) so operators can opt out.
+    - name: Set sandbox tool allow wildcard
+      when: sandbox_tool_allow_wildcard | default(true) | bool
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'tools': (openclaw_config.tools | default({})) | combine({
+              'sandbox': ((openclaw_config.tools | default({})).sandbox | default({})) | combine({
+                'tools': (((openclaw_config.tools | default({})).sandbox | default({})).tools | default({})) | combine({
+                  'allow': ['*']
+                })
+              })
+            })
+          }, recursive=true) }}
+
     # When qortex is enabled, ensure memory tools are allowed (alsoAllow group:memory)
     # so the agent sees memory_search / memory_get even when tools.profile is messaging.
     - name: Add group:memory to tools.alsoAllow when qortex enabled
@@ -155,9 +187,11 @@
       ansible.builtin.set_fact:
         qortex_api_key: "{{ (_gw_qortex_api_key_file.content | b64decode).strip() }}"
 
-    # When qortex serve mode is enabled, switch memorySearch and learning
-    # to HTTP transport instead of MCP subprocess.
-    - name: Switch memorySearch to HTTP transport (when qortex serve enabled)
+    # When qortex serve mode is enabled AND the gateway config schema supports
+    # HTTP transport keys, switch memorySearch and learning to HTTP transport.
+    # NOTE: Builds after 2026-02-24 reject 'transport' and 'http' as unrecognized
+    # keys under qortex config. Gate behind qortex_http_transport (default: false).
+    - name: Switch memorySearch to HTTP transport (when qortex serve + http transport enabled)
       ansible.builtin.set_fact:
         openclaw_config: >-
           {{ openclaw_config | combine({
@@ -178,9 +212,10 @@
           }, recursive=true) }}
       when: >
         (qortex_serve_enabled | default(false) | bool) and
+        (qortex_http_transport | default(false) | bool) and
         ((openclaw_config.agents.defaults | default({})).memorySearch is defined)
 
-    - name: Switch learning to HTTP transport (when qortex serve enabled)
+    - name: Switch learning to HTTP transport (when qortex serve + http transport enabled)
       ansible.builtin.set_fact:
         openclaw_config: >-
           {{ openclaw_config | combine({
@@ -197,6 +232,7 @@
           }, recursive=true) }}
       when: >
         (qortex_serve_enabled | default(false) | bool) and
+        (qortex_http_transport | default(false) | bool) and
         (openclaw_config.learning is defined)
 
     # Ensure vault bind mount persists in sandbox config.
@@ -213,7 +249,7 @@
       block:
         - name: Read existing sandbox config
           ansible.builtin.set_fact:
-            _vault_bind: "{{ (sandbox_vault_path | default('/workspace-obsidian')) ~ ':' ~ (sandbox_vault_path | default('/workspace-obsidian')) ~ ':' ~ (sandbox_vault_access | default('rw')) }}"
+            _vault_bind: "{{ (sandbox_vault_path | default('/workspace-obsidian')) ~ ':' ~ (sandbox_vault_mount | default('/workspace/obsidian')) ~ ':' ~ (sandbox_vault_access | default('rw')) }}"
             _sandbox_cfg: "{{ ((openclaw_config.agents | default({})).defaults | default({})).sandbox | default({}) }}"
 
         - name: Add vault bind mount if not already present
@@ -267,7 +303,7 @@
       ansible.builtin.set_fact:
         _discovery_env: >-
           {{ {}
-            | combine({'OBSIDIAN_VAULT_PATH': sandbox_vault_path | default('/workspace-obsidian')} if (vault_overlay_check.stat.exists | default(false)) else {})
+            | combine({'OBSIDIAN_VAULT_PATH': sandbox_vault_mount | default('/workspace/obsidian')} if (vault_overlay_check.stat.exists | default(false)) else {})
             | combine({'OPENCLAW_SOURCE_PATH': sandbox_source_mount | default('/openclaw-source')} if (source_mount_check.stat.exists | default(false)) else {})
           }}
 
@@ -308,6 +344,14 @@
         msg: |
           Applied VM path fixes:
           - workspace: {{ user_home }}/.openclaw/workspace
+          {% if (gateway_plugin_entries | default([])) | length > 0 %}
+          - plugins enabled: {{ gateway_plugin_entries | join(', ') }}
+          {% endif %}
+          {% if sandbox_tool_allow_wildcard | default(true) | bool %}
+          - sandbox tool allow: * (all tools pass through)
+          {% else %}
+          - sandbox tool allow: DEFAULT_TOOL_ALLOW (restrictive, 15 core tools)
+          {% endif %}
           - dmPolicy: pairing (unknown senders get a pairing code)
           {% if telegram_user_id is defined and telegram_user_id | string | length > 0 %}
           - allowFrom: [{{ telegram_user_id }}] (pre-seeded owner)
@@ -315,7 +359,7 @@
           - allowFrom: not pre-seeded (approve via: claw pair approve <code>)
           {% endif %}
           {% if vault_overlay_check.stat.exists | default(false) %}
-          - vault bind: {{ sandbox_vault_path | default('/workspace-obsidian') }} (rw in sandbox containers)
+          - vault bind: {{ sandbox_vault_path | default('/workspace-obsidian') }} -> {{ sandbox_vault_mount | default('/workspace/obsidian') }} (rw in sandbox containers)
           {% else %}
           - vault bind: skipped (no vault overlay at {{ sandbox_vault_path | default('/workspace-obsidian') }})
           {% endif %}

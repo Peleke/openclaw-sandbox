@@ -410,7 +410,7 @@
       Environment=PATH={{ user_home }}/.local/bin:{{ user_home }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
       Environment=OPENCLAW_BUNDLED_PLUGINS_DIR={{ workspace_path }}/extensions
       {% if obsidian_vault_mount.stat.exists %}
-      Environment=OBSIDIAN_VAULT_PATH=/workspace-obsidian
+      Environment=OBSIDIAN_VAULT_PATH={{ sandbox_vault_mount | default('/workspace/obsidian') }}
       {% endif %}
       # Load secrets from /etc/openclaw/secrets.env (- prefix = don't fail if missing)
       EnvironmentFile=-/etc/openclaw/secrets.env
@@ -419,6 +419,12 @@
       {% if overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool) %}
       # Flush overlay dentry cache before start — host-side file edits can leave stale handles
       ExecStartPre=+/usr/bin/mount -o remount {{ workspace_path }}
+      {% endif %}
+      {% if obsidian_vault_mount.stat.exists %}
+      # Bind-mount vault overlay into workspace so the agent can access it.
+      # Uses bind mount instead of symlink because sandbox-paths.js rejects symlinks.
+      # Idempotent: mountpoint check prevents stacking duplicate mounts.
+      ExecStartPre=+/bin/bash -c 'mkdir -p {{ user_home }}/.openclaw/workspace/obsidian && mountpoint -q {{ user_home }}/.openclaw/workspace/obsidian || mount --bind {{ sandbox_vault_path | default("/workspace-obsidian") }} {{ user_home }}/.openclaw/workspace/obsidian'
       {% endif %}
       ExecStart=/usr/bin/node dist/index.js gateway --bind lan --port 18789 --allow-unconfigured
       Restart=on-failure

@@ -7,3 +7,19 @@ config_identity_dirs:
   - identity
   - credentials
   - dotfiles
+
+# Plugins to enable in openclaw.json (list of plugin IDs).
+# Each entry gets plugins.entries.<id>.enabled = true.
+gateway_plugin_entries:
+  - linwheel
+
+# Allow all tools through the sandbox policy filter.
+# When true, injects tools.sandbox.tools.allow: ["*"], overriding the
+# restrictive DEFAULT_TOOL_ALLOW (15 core tools only). Required for plugins.
+# Set to false to keep the restrictive default for non-plugin deployments.
+sandbox_tool_allow_wildcard: true
+
+# Enable qortex HTTP transport injection into memorySearch and learning config.
+# Newer gateway builds (2026-02-24+) reject 'transport' and 'http' keys under
+# qortex config. Set to true only for builds that support HTTP transport.
+qortex_http_transport: false

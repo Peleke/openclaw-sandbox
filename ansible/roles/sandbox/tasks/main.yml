@@ -233,7 +233,7 @@
     - name: Check if vault bind already in sandbox config
       when: openclaw_json.stat.exists and vault_overlay_check.stat.exists
       ansible.builtin.set_fact:
-        vault_bind: "{{ sandbox_vault_path }}:{{ sandbox_vault_path }}:{{ sandbox_vault_access }}"
+        vault_bind: "{{ sandbox_vault_path }}:{{ sandbox_vault_mount }}:{{ sandbox_vault_access }}"
         existing_binds: "{{ openclaw_config.agents.defaults.sandbox.docker.binds | default([]) }}"
 
     - name: Add vault bind mount to sandbox config
@@ -292,7 +292,7 @@
       ansible.builtin.set_fact:
         _discovery_env: >-
           {{ {}
-            | combine({'OBSIDIAN_VAULT_PATH': sandbox_vault_path} if (vault_overlay_check.stat.exists | default(false)) else {})
+            | combine({'OBSIDIAN_VAULT_PATH': sandbox_vault_mount} if (vault_overlay_check.stat.exists | default(false)) else {})
             | combine({'OPENCLAW_SOURCE_PATH': sandbox_source_mount} if (source_mount_check.stat.exists | default(false)) else {})
           }}
 
@@ -419,7 +419,7 @@
           |------|----------|--------|
           | `/workspace` | Agent workspace (identity, bootstrap, tools) | rw |
           {% if vault_overlay_check.stat.exists | default(false) %}
-          | `{{ sandbox_vault_path }}` | Obsidian vault (ClawTheCurious) | {{ sandbox_vault_access }} |
+          | `{{ sandbox_vault_mount }}` | Obsidian vault (ClawTheCurious) | {{ sandbox_vault_access }} |
           {% endif %}
           {% if source_mount_check.stat.exists | default(false) %}
           | `{{ sandbox_source_mount }}` | OpenClaw source repo | {{ sandbox_source_access }} |
@@ -430,7 +430,7 @@
           These env vars are set in your container:
 
           {% if vault_overlay_check.stat.exists | default(false) %}
-          - `OBSIDIAN_VAULT_PATH={{ sandbox_vault_path }}`
+          - `OBSIDIAN_VAULT_PATH={{ sandbox_vault_mount }}`
           {% endif %}
           {% if source_mount_check.stat.exists | default(false) %}
           - `OPENCLAW_SOURCE_PATH={{ sandbox_source_mount }}`
@@ -453,7 +453,7 @@
             Workspace: {{ sandbox_workspace_access }}
             Network: {{ sandbox_docker_network }}
           {% if vault_overlay_check.stat.exists | default(false) %}
-            Vault: {{ sandbox_vault_path }} ({{ sandbox_vault_access }})
+            Vault: {{ sandbox_vault_path }} -> {{ sandbox_vault_mount }} ({{ sandbox_vault_access }})
           {% endif %}
           {% if source_mount_check.stat.exists | default(false) %}
             Source: {{ sandbox_source_path }} -> {{ sandbox_source_mount }} ({{ sandbox_source_access }})

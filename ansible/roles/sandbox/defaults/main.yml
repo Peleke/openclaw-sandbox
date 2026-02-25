@@ -54,7 +54,10 @@ sandbox_network_docker_network: "bridge"
 sandbox_setup_script: "scripts/sandbox-setup.sh"
 
 # Obsidian vault bind mount for sandbox containers
+# sandbox_vault_path  = host-side path (where overlay is on VM filesystem)
+# sandbox_vault_mount = container-side path (where Docker mounts it inside the sandbox)
 sandbox_vault_path: "/workspace-obsidian"
+sandbox_vault_mount: "/workspace/obsidian"
 sandbox_vault_access: "rw"
 
 # OpenClaw source repo (read-only reference for agent context)
