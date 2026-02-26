@@ -168,8 +168,19 @@
   notify:
     - Restart qortex container
 
-- name: Pull qortex Docker image
+- name: Check if qortex Docker image exists locally
   when: qortex_serve_enabled | default(false) | bool
+  become: true
+  ansible.builtin.command:
+    cmd: "docker image inspect {{ qortex_docker_image }}"
+  register: _qortex_image_check
+  failed_when: false
+  changed_when: false
+
+- name: Pull qortex Docker image (skipped if already loaded)
+  when:
+    - qortex_serve_enabled | default(false) | bool
+    - _qortex_image_check.rc != 0
   become: true
   ansible.builtin.command:
     cmd: "docker pull {{ qortex_docker_image }}"
