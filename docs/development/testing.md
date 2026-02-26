@@ -169,10 +169,10 @@ Covers: systemd service, `SupplementaryGroups=docker`, port 18789 forwarding, `o
 
 | File | Type | Description |
 |------|------|-------------|
-| `test-qortex-ansible.sh` | Ansible validation | Role structure, defaults, directory setup, interop config |
-| `test-qortex-role.sh` | VM deployment | Seed directories, signals directory, qortex CLI, interop.yaml |
+| `test-qortex-ansible.sh` | Ansible validation | Role structure, defaults, Docker deployment, directory setup, interop config |
+| `test-qortex-role.sh` | VM deployment | Docker container, seed directories, signals directory, interop.yaml, health check |
 
-Covers: `~/.qortex/seeds/{pending,processed,failed}`, `~/.qortex/signals/`, `~/.buildlog/interop.yaml`, `uv tool install qortex`.
+Covers: Docker container deployment (`ghcr.io/peleke/qortex:latest`), `qortex_data` volume, `~/.qortex/seeds/{pending,processed,failed}`, `~/.qortex/signals/`, `~/.buildlog/interop.yaml`, old systemd cleanup.
 
 ### Python CLI Tests (pytest)
 

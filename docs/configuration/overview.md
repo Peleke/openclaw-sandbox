@@ -125,21 +125,24 @@ Configuration flows through three layers:
 | Variable | Default | VM File | Description | How to Set |
 |----------|---------|---------|-------------|------------|
 | `qortex_enabled` | `true` | -- | Enable qortex directory setup and interop config | `-e "qortex_enabled=false"` |
-| `qortex_install` | `true` | -- | Install qortex CLI via `uv tool install` | `-e "qortex_install=false"` |
-| `qortex_extras` | `mcp,vec-sqlite,observability,nlp` | -- | Pip extras for qortex features | `-e` |
-| `qortex_wheel_dir` | `""` | -- | Local wheels directory (empty = install from PyPI) | `-e` |
+| `qortex_docker_image` | `ghcr.io/peleke/qortex:latest` | Docker container | Docker image for the qortex container | `-e` |
+| `qortex_docker_container` | `qortex` | Docker container | Container name | `-e` |
+| `qortex_docker_volume` | `qortex_data` | Docker volume | Named volume for persistent data (mounted at `/root/.qortex`) | `-e` |
+| `qortex_serve_enabled` | `true` | Docker container | Deploy the qortex Docker container | `-e "qortex_serve_enabled=false"` |
+| `qortex_serve_port` | `8400` | `/etc/openclaw/qortex.env` | HTTP service listen port | `-e` |
+| `qortex_serve_host` | `0.0.0.0` | `/etc/openclaw/qortex.env` | HTTP service bind address | `-e` |
+| `qortex_http_transport` | `true` | `openclaw.json` | Gateway connects via HTTP REST (not MCP subprocess) | `-e` |
+| `qortex_extraction` | `spacy` | `/etc/openclaw/qortex.env` | Concept extraction strategy: `spacy`, `llm`, or `none` | `-e` |
+| `qortex_vec_backend` | `sqlite` | `/etc/openclaw/qortex.env` | Vector backend: `sqlite` or `pgvector` | `-e` |
+| `qortex_pgvector_dsn` | `postgresql://qortex:qortex@localhost:5432/qortex` | `/etc/openclaw/qortex.env` | PostgreSQL connection string for pgvector | `-e` |
+| `qortex_api_keys` | `""` (auto-generated) | `/etc/openclaw/qortex.env` | API keys for HTTP service auth | `-e` |
+| `qortex_hmac_secret` | `""` | `/etc/openclaw/qortex.env` | HMAC-SHA256 shared secret | `-e` |
 | `qortex_otel_enabled` | `true` | `/etc/openclaw/qortex-otel.env`, `/etc/profile.d/qortex-otel.sh` | Enable OpenTelemetry export for qortex | `-e "qortex_otel_enabled=false"` |
 | `qortex_otel_endpoint` | `http://host.lima.internal:4318` | `/etc/openclaw/qortex-otel.env` | OTEL collector endpoint (host-side) | `-e` |
 | `qortex_otel_protocol` | `http/protobuf` | `/etc/openclaw/qortex-otel.env` | OTEL exporter protocol | `-e` |
 | `qortex_prometheus_enabled` | `true` | `/etc/openclaw/qortex-otel.env` | Expose Prometheus metrics endpoint | `-e "qortex_prometheus_enabled=false"` |
 | `qortex_prometheus_port` | `9090` | `/etc/openclaw/qortex-otel.env` | Prometheus scrape port | `-e` |
-| `qortex_serve_enabled` | `false` | `/etc/systemd/system/qortex.service` | Enable qortex HTTP service | `-e "qortex_serve_enabled=true"` or `bilrost up --qortex-serve` |
-| `qortex_serve_port` | `8400` | `/etc/openclaw/qortex.env` | HTTP service listen port | `-e` |
-| `qortex_serve_host` | `0.0.0.0` | `/etc/openclaw/qortex.env` | HTTP service bind address | `-e` |
-| `qortex_vec_backend` | `sqlite` | `/etc/openclaw/qortex.env` | Vector backend: `sqlite` or `pgvector` | `-e` |
-| `qortex_pgvector_dsn` | `postgresql://qortex:qortex@localhost:5432/qortex` | `/etc/openclaw/qortex.env` | PostgreSQL connection string for pgvector | `-e` |
-| `qortex_api_keys` | `""` (auto-generated) | `/etc/openclaw/qortex.env` | API keys for HTTP service auth | `-e` |
-| `qortex_hmac_secret` | `""` | `/etc/openclaw/qortex.env` | HMAC-SHA256 shared secret | `-e` |
+| `qortex_install_cli` | `false` | -- | Install lightweight qortex CLI via `uv` (for ad-hoc commands) | `-e "qortex_install_cli=true"` |
 
 ### PgVector Role (`ansible/roles/pgvector/defaults/main.yml`)
 
@@ -206,7 +209,7 @@ The playbook executes roles in this order:
 9. **tailscale** -- configure Tailscale routing through host
 10. **cadence** -- deploy ambient AI pipeline
 11. **buildlog** -- install buildlog for ambient learning capture
-12. **qortex** -- install qortex CLI, deploy seed exchange dirs, OTEL env, memory + learning config, optional HTTP service
+12. **qortex** -- deploy qortex Docker container, seed exchange dirs, OTEL env, memory + learning config (HTTP REST transport)
 13. **sandbox** -- build Docker sandbox image, configure `openclaw.json`
 14. **sync-gate** -- deploy sync-gate helper scripts
 
@@ -228,8 +231,7 @@ The playbook executes roles in this order:
 | `~/.claude/CLAUDE.md` | Agent instructions (buildlog + sandbox policy) | buildlog role |
 | `/etc/openclaw/qortex-otel.env` | Qortex OTEL + Prometheus env (systemd EnvironmentFile) | qortex role |
 | `/etc/profile.d/qortex-otel.sh` | Qortex OTEL env for login/non-login shells | qortex role |
-| `/etc/systemd/system/qortex.service` | Qortex HTTP service unit (when `qortex_serve_enabled`) | qortex role |
-| `/etc/openclaw/qortex.env` | Qortex HTTP service environment (vec backend, API keys) | qortex role |
+| `/etc/openclaw/qortex.env` | Qortex Docker container environment (vec backend, API keys, OTEL) | qortex role |
 | `/etc/openclaw/qortex-api-key` | Auto-generated API key for qortex HTTP auth | qortex role |
 | `/opt/pgvector/docker-compose.yml` | PgVector Docker Compose config (when `pgvector_enabled`) | pgvector role |
 | `/opt/memgraph/docker-compose.yml` | Memgraph Docker Compose config (when `memgraph_enabled`) | memgraph role |

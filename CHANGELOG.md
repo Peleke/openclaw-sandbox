@@ -5,6 +5,22 @@ All notable changes to Bilrost (formerly openclaw-sandbox) are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-02-26
+
+### Changed
+
+**Qortex Docker Deployment (PR #111)**
+- Qortex now runs as a Docker container (`ghcr.io/peleke/qortex:latest`) instead of a systemd service managed by `uv tool install`
+- Image ships with baked-in embedding model (all-MiniLM-L6-v2), spaCy (`en_core_web_sm`), and full extraction pipeline -- no runtime downloads needed
+- Gateway connects to qortex via HTTP REST transport (`transport: "http"`) instead of MCP subprocess spawning
+- Persistent data stored in Docker volume `qortex_data` mounted at `/root/.qortex` inside the container
+- Docker pull is skipped when image is already loaded locally (supports offline/air-gapped VMs)
+- Old systemd units (`qortex.service`, `qortex-mcp.service`) are automatically stopped, disabled, and removed on provision
+- Config key `command` is stripped from `memorySearch.qortex` and `learning.qortex` when `transport: "http"` is active (prevents gateway from spawning a conflicting subprocess)
+- Prometheus metrics exposed on port 9090; OTEL traces exported to host collector
+- `qortex_serve_enabled` now defaults to `true` (was `false`)
+- `qortex_install` (uv-based CLI install) now defaults to `false`; optional CLI available via `qortex_install_cli`
+
 ## [Unreleased]
 
 ### Added
@@ -193,7 +209,8 @@ First release as **Bilrost** on [PyPI](https://pypi.org/project/bilrost/). Insta
 - Basic Ansible playbook structure
 - Gateway role for OpenClaw installation
 
-[Unreleased]: https://github.com/Peleke/openclaw-sandbox/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/Peleke/openclaw-sandbox/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/Peleke/openclaw-sandbox/compare/v1.3.0...v1.3.1
 [1.0.0]: https://github.com/Peleke/openclaw-sandbox/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/Peleke/openclaw-sandbox/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Peleke/openclaw-sandbox/compare/v0.1.0...v0.2.0
