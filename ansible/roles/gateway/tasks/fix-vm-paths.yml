@@ -237,6 +237,43 @@
         (_qortex_http_cfg is defined) and
         (openclaw_config.learning is defined)
 
+    # The gateway spawns `command` as a subprocess for MCP stdio transport.
+    # When using HTTP transport (Docker container), the subprocess is wasteful
+    # and conflicts with the REST endpoint.  Strip `command` so the gateway
+    # talks to the Docker container over HTTP only.
+    # NOTE: combine(recursive=true) cannot remove keys — it only adds/updates.
+    # We must rebuild without `command` using dict2items | rejectattr | items2dict
+    # and use NON-recursive combine so the old key doesn't leak back in.
+    - name: Strip command from memorySearch.qortex (HTTP replaces subprocess)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': (openclaw_config.agents | default({})) | combine({
+              'defaults': ((openclaw_config.agents | default({})).defaults | default({})) | combine({
+                'memorySearch': (((openclaw_config.agents | default({})).defaults | default({})).memorySearch | default({})) | combine({
+                  'qortex': ((((openclaw_config.agents | default({})).defaults | default({})).memorySearch | default({})).qortex | default({}))
+                    | dict2items | rejectattr('key', 'equalto', 'command') | items2dict
+                })
+              })
+            })
+          }) }}
+      when: >
+        (_qortex_http_cfg is defined) and
+        ((((openclaw_config.agents | default({})).defaults | default({})).memorySearch | default({})).qortex | default({})).command is defined
+
+    - name: Strip command from learning.qortex (HTTP replaces subprocess)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'learning': (openclaw_config.learning | default({})) | combine({
+              'qortex': ((openclaw_config.learning | default({})).qortex | default({}))
+                | dict2items | rejectattr('key', 'equalto', 'command') | items2dict
+            })
+          }) }}
+      when: >
+        (_qortex_http_cfg is defined) and
+        ((openclaw_config.learning | default({})).qortex | default({})).command is defined
+
     # Ensure vault bind mount persists in sandbox config.
     # The sandbox role adds this during initial provisioning, but if the vault
     # overlay wasn't mounted yet or config was rewritten, re-add it here so
