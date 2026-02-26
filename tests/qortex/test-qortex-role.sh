@@ -172,7 +172,7 @@ if vm_exec_quiet "test -f /etc/profile.d/qortex-otel.sh"; then
     log_fail "OTEL script missing OTEL_EXPORTER_OTLP_ENDPOINT"
   fi
 
-  # Test: Contains OTEL_EXPORTER_OTLP_PROTOCOL (http/protobuf for Lima reliability)
+  # Test: Contains OTEL_EXPORTER_OTLP_PROTOCOL
   if vm_exec "grep -q 'OTEL_EXPORTER_OTLP_PROTOCOL' /etc/profile.d/qortex-otel.sh" 2>/dev/null; then
     log_pass "OTEL script exports OTEL_EXPORTER_OTLP_PROTOCOL"
   else
@@ -221,32 +221,121 @@ fi
 echo ""
 
 # ============================================================
-# SECTION 5: Qortex CLI
+# SECTION 5: Docker Container
 # ============================================================
-echo "▸ Qortex CLI"
+echo "▸ Docker Container"
 echo ""
 
-# Test: qortex is installed
-if vm_exec_quiet "~/.local/bin/qortex --version" >/dev/null 2>&1; then
-  log_pass "qortex CLI is installed"
-
-  QORTEX_VERSION=$(vm_exec "~/.local/bin/qortex --version" 2>/dev/null | head -1)
-  if [[ -n "$QORTEX_VERSION" ]]; then
-    log_pass "qortex version: $QORTEX_VERSION"
-  else
-    log_info "Could not get qortex version"
-  fi
+# Test: qortex container is running
+CONTAINER_STATUS=$(vm_exec "docker inspect -f '{{.State.Status}}' qortex" 2>/dev/null || echo "not found")
+if [[ "$CONTAINER_STATUS" == "running" ]]; then
+  log_pass "qortex Docker container is running"
 else
-  log_skip "qortex CLI not installed (may not be published yet)"
+  log_fail "qortex Docker container not running (status: $CONTAINER_STATUS)"
 fi
 
-# Test: buildlog ingest-seeds doesn't crash
-INGEST_OUTPUT=$(vm_exec "~/.local/bin/buildlog ingest-seeds" 2>&1 || true)
-if [[ $? -eq 0 ]] || echo "$INGEST_OUTPUT" | grep -qiE "ingested\|no seeds\|complete\|success"; then
-  log_pass "buildlog ingest-seeds runs without crash"
+# Test: container uses host network
+CONTAINER_NETWORK=$(vm_exec "docker inspect -f '{{.HostConfig.NetworkMode}}' qortex" 2>/dev/null || echo "unknown")
+if [[ "$CONTAINER_NETWORK" == "host" ]]; then
+  log_pass "Container uses host network"
 else
-  log_skip "buildlog ingest-seeds returned unexpected output"
-  log_info "Output: $(echo "$INGEST_OUTPUT" | head -2)"
+  log_fail "Container not using host network (got: $CONTAINER_NETWORK)"
+fi
+
+# Test: container has data volume mounted
+CONTAINER_MOUNTS=$(vm_exec "docker inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' qortex" 2>/dev/null || echo "")
+if echo "$CONTAINER_MOUNTS" | grep -q "/data"; then
+  log_pass "Data volume mounted at /data"
+else
+  log_fail "Data volume not mounted (mounts: $CONTAINER_MOUNTS)"
+fi
+
+# Test: container has env file loaded
+CONTAINER_ENV=$(vm_exec "docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' qortex" 2>/dev/null || echo "")
+if echo "$CONTAINER_ENV" | grep -q "QORTEX_EXTRACTION=spacy"; then
+  log_pass "Container has QORTEX_EXTRACTION=spacy"
+else
+  log_fail "Container missing QORTEX_EXTRACTION env var"
+fi
+
+if echo "$CONTAINER_ENV" | grep -q "QORTEX_OTEL_ENABLED=true"; then
+  log_pass "Container has QORTEX_OTEL_ENABLED=true"
+else
+  log_skip "Container OTEL may be disabled"
+fi
+
+if echo "$CONTAINER_ENV" | grep -q "HF_HUB_OFFLINE=1"; then
+  log_pass "Container has HF_HUB_OFFLINE=1 (no runtime downloads)"
+else
+  log_fail "Container missing HF_HUB_OFFLINE=1"
+fi
+
+# Test: old systemd services are gone
+OLD_SYSTEMD=$(vm_exec "systemctl is-active qortex.service" 2>/dev/null || echo "inactive")
+if [[ "$OLD_SYSTEMD" == "inactive" || "$OLD_SYSTEMD" == *"could not be found"* ]]; then
+  log_pass "Old systemd qortex.service is gone"
+else
+  log_fail "Old systemd qortex.service still active: $OLD_SYSTEMD"
+fi
+
+echo ""
+
+# ============================================================
+# SECTION 6: Health Check & REST API
+# ============================================================
+echo "▸ Health Check & REST API"
+echo ""
+
+# Test: health endpoint responds
+HEALTH_RESPONSE=$(vm_exec "curl -sf http://localhost:8400/v1/health" 2>/dev/null || echo "")
+if echo "$HEALTH_RESPONSE" | grep -q '"status"'; then
+  log_pass "GET /v1/health responds OK"
+else
+  log_fail "GET /v1/health failed (got: '$HEALTH_RESPONSE')"
+fi
+
+# Test: status endpoint responds (with auth)
+API_KEY=$(vm_exec "cat /etc/openclaw/qortex-api-key" 2>/dev/null || echo "")
+if [[ -n "$API_KEY" ]]; then
+  log_pass "API key exists at /etc/openclaw/qortex-api-key"
+
+  STATUS_RESPONSE=$(vm_exec "curl -sf -H 'Authorization: Bearer $API_KEY' http://localhost:8400/v1/status" 2>/dev/null || echo "")
+  if echo "$STATUS_RESPONSE" | grep -q "status\|health"; then
+    log_pass "GET /v1/status responds with auth"
+  else
+    log_skip "GET /v1/status did not respond (got: '$STATUS_RESPONSE')"
+  fi
+else
+  log_skip "No API key found"
+fi
+
+echo ""
+
+# ============================================================
+# SECTION 7: Gateway Config
+# ============================================================
+echo "▸ Gateway Config (qortex transport)"
+echo ""
+
+# Test: openclaw.json has HTTP transport config
+CONFIG_FILE=$(vm_exec "cat ~/.openclaw/openclaw.json" 2>/dev/null || echo "{}")
+if echo "$CONFIG_FILE" | grep -q '"transport".*"http"'; then
+  log_pass "openclaw.json has transport: http"
+else
+  log_fail "openclaw.json missing transport: http"
+fi
+
+if echo "$CONFIG_FILE" | grep -q '"baseUrl".*"http://localhost:8400"'; then
+  log_pass "openclaw.json has baseUrl: http://localhost:8400"
+else
+  log_fail "openclaw.json missing baseUrl: http://localhost:8400"
+fi
+
+# Test: no stale MCP references
+if echo "$CONFIG_FILE" | grep -q '8401/mcp'; then
+  log_fail "openclaw.json still has stale 8401/mcp reference"
+else
+  log_pass "No stale 8401/mcp references in config"
 fi
 
 echo ""

@@ -187,10 +187,23 @@
       ansible.builtin.set_fact:
         qortex_api_key: "{{ (_gw_qortex_api_key_file.content | b64decode).strip() }}"
 
-    # When qortex MCP HTTP service is enabled AND the gateway config schema supports
-    # HTTP transport keys, switch memorySearch and learning to HTTP transport.
-    # Points at qortex-mcp.service (streamable-http on port 8401) NOT qortex.service (REST on 8400).
-    - name: Switch memorySearch to HTTP transport (when qortex MCP HTTP enabled)
+    # When qortex Docker container is running, switch memorySearch and learning
+    # to HTTP transport pointing at localhost:8400 (plain REST, no MCP).
+    - name: Build qortex HTTP config for gateway
+      ansible.builtin.set_fact:
+        _qortex_http_cfg: >-
+          {{ {'baseUrl': 'http://localhost:' ~ (qortex_serve_port | default(8400)) | string}
+            | combine(
+              {'headers': {'Authorization': 'Bearer ' ~ qortex_api_key}}
+              if (qortex_api_key is defined and qortex_api_key | length > 0)
+              else {}
+            )
+          }}
+      when: >
+        (qortex_serve_enabled | default(false) | bool) and
+        (qortex_http_transport | default(true) | bool)
+
+    - name: Switch memorySearch to HTTP transport (qortex REST)
       ansible.builtin.set_fact:
         openclaw_config: >-
           {{ openclaw_config | combine({
@@ -199,36 +212,67 @@
                 'memorySearch': ((openclaw_config.agents.defaults | default({})).memorySearch | default({})) | combine({
                   'qortex': (((openclaw_config.agents.defaults | default({})).memorySearch | default({})).qortex | default({})) | combine({
                     'transport': 'http',
-                    'http': {
-                      'baseUrl': 'http://localhost:' ~ (qortex_mcp_port | default(8401)) | string ~ '/mcp'
-                    }
+                    'http': _qortex_http_cfg
                   })
                 })
               })
             })
           }, recursive=true) }}
       when: >
-        (qortex_mcp_enabled | default(false) | bool) and
-        (qortex_http_transport | default(false) | bool) and
+        (_qortex_http_cfg is defined) and
         ((openclaw_config.agents.defaults | default({})).memorySearch is defined)
 
-    - name: Switch learning to HTTP transport (when qortex MCP HTTP enabled)
+    - name: Switch learning to HTTP transport (qortex REST)
       ansible.builtin.set_fact:
         openclaw_config: >-
           {{ openclaw_config | combine({
             'learning': (openclaw_config.learning | default({})) | combine({
               'qortex': ((openclaw_config.learning | default({})).qortex | default({})) | combine({
                 'transport': 'http',
-                'http': {
-                  'baseUrl': 'http://localhost:' ~ (qortex_mcp_port | default(8401)) | string ~ '/mcp'
-                }
+                'http': _qortex_http_cfg
               })
             })
           }, recursive=true) }}
       when: >
-        (qortex_mcp_enabled | default(false) | bool) and
-        (qortex_http_transport | default(false) | bool) and
+        (_qortex_http_cfg is defined) and
         (openclaw_config.learning is defined)
+
+    # The gateway spawns `command` as a subprocess for MCP stdio transport.
+    # When using HTTP transport (Docker container), the subprocess is wasteful
+    # and conflicts with the REST endpoint.  Strip `command` so the gateway
+    # talks to the Docker container over HTTP only.
+    # NOTE: combine(recursive=true) cannot remove keys — it only adds/updates.
+    # We must rebuild without `command` using dict2items | rejectattr | items2dict
+    # and use NON-recursive combine so the old key doesn't leak back in.
+    - name: Strip command from memorySearch.qortex (HTTP replaces subprocess)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'agents': (openclaw_config.agents | default({})) | combine({
+              'defaults': ((openclaw_config.agents | default({})).defaults | default({})) | combine({
+                'memorySearch': (((openclaw_config.agents | default({})).defaults | default({})).memorySearch | default({})) | combine({
+                  'qortex': ((((openclaw_config.agents | default({})).defaults | default({})).memorySearch | default({})).qortex | default({}))
+                    | dict2items | rejectattr('key', 'equalto', 'command') | items2dict
+                })
+              })
+            })
+          }) }}
+      when: >
+        (_qortex_http_cfg is defined) and
+        ((((openclaw_config.agents | default({})).defaults | default({})).memorySearch | default({})).qortex | default({})).command is defined
+
+    - name: Strip command from learning.qortex (HTTP replaces subprocess)
+      ansible.builtin.set_fact:
+        openclaw_config: >-
+          {{ openclaw_config | combine({
+            'learning': (openclaw_config.learning | default({})) | combine({
+              'qortex': ((openclaw_config.learning | default({})).qortex | default({}))
+                | dict2items | rejectattr('key', 'equalto', 'command') | items2dict
+            })
+          }) }}
+      when: >
+        (_qortex_http_cfg is defined) and
+        ((openclaw_config.learning | default({})).qortex | default({})).command is defined
 
     # Ensure vault bind mount persists in sandbox config.
     # The sandbox role adds this during initial provisioning, but if the vault
@@ -366,8 +410,8 @@
           {% if _discovery_env | default({}) | length > 0 %}
           - discovery env: {{ _discovery_env | to_json }}
           {% endif %}
-          {% if (qortex_mcp_enabled | default(false) | bool) and (qortex_http_transport | default(false) | bool) %}
-          - qortex transport: HTTP → http://localhost:{{ qortex_mcp_port | default(8401) }}/mcp (streamable-http)
+          {% if (qortex_serve_enabled | default(false) | bool) and (qortex_http_transport | default(true) | bool) %}
+          - qortex transport: HTTP → http://localhost:{{ qortex_serve_port | default(8400) }} (REST, Docker container)
           {% else %}
           - qortex transport: stdio (subprocess)
           {% endif %}

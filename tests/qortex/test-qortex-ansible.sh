@@ -56,7 +56,7 @@ else
 fi
 
 # Test: Required subdirectories
-for subdir in defaults tasks templates; do
+for subdir in defaults tasks templates handlers; do
   if [[ -d "$ROLE_DIR/$subdir" ]]; then
     log_pass "Directory exists: $subdir/"
   else
@@ -65,11 +65,20 @@ for subdir in defaults tasks templates; do
 done
 
 # Test: Required files
-for file in defaults/main.yml tasks/main.yml templates/interop.yaml.j2 templates/qortex-otel.sh.j2; do
+for file in defaults/main.yml tasks/main.yml handlers/main.yml templates/interop.yaml.j2 templates/qortex-otel.sh.j2 templates/qortex.env.j2; do
   if [[ -f "$ROLE_DIR/$file" ]]; then
     log_pass "File exists: $file"
   else
     log_fail "Missing file: $file"
+  fi
+done
+
+# Test: Old systemd templates are removed
+for file in templates/qortex.service.j2 templates/qortex-mcp.service.j2; do
+  if [[ ! -f "$ROLE_DIR/$file" ]]; then
+    log_pass "Removed legacy file: $file"
+  else
+    log_fail "Legacy file still present: $file (should be removed)"
   fi
 done
 
@@ -82,7 +91,7 @@ echo "▸ YAML Syntax"
 echo ""
 
 if command -v yamllint &>/dev/null; then
-  for yaml_file in defaults/main.yml tasks/main.yml; do
+  for yaml_file in defaults/main.yml tasks/main.yml handlers/main.yml; do
     if yamllint -d relaxed "$ROLE_DIR/$yaml_file" >/dev/null 2>&1; then
       log_pass "Valid YAML: $yaml_file"
     else
@@ -91,7 +100,7 @@ if command -v yamllint &>/dev/null; then
     fi
   done
 elif command -v ansible-playbook &>/dev/null; then
-  for yaml_file in defaults/main.yml tasks/main.yml; do
+  for yaml_file in defaults/main.yml tasks/main.yml handlers/main.yml; do
     if head -1 "$ROLE_DIR/$yaml_file" | grep -qE '^---' || head -1 "$ROLE_DIR/$yaml_file" | grep -qE '^#'; then
       log_pass "Valid YAML: $yaml_file"
     else
@@ -208,6 +217,37 @@ else
   log_fail "qortex-otel.env template missing"
 fi
 
+# --- qortex.env template (Docker env-file format) ---
+DOCKER_ENV_TEMPLATE="$ROLE_DIR/templates/qortex.env.j2"
+if [[ -f "$DOCKER_ENV_TEMPLATE" ]]; then
+  log_pass "qortex.env Docker template exists"
+
+  # Must NOT contain 'export' (Docker --env-file format)
+  if grep -q "^export " "$DOCKER_ENV_TEMPLATE"; then
+    log_fail "Docker env template contains 'export' (invalid for --env-file)"
+  else
+    log_pass "Docker env template has no 'export' (correct format)"
+  fi
+
+  # Check required env vars for Docker container
+  for var in QORTEX_STORE QORTEX_VEC HF_HUB_OFFLINE QORTEX_EXTRACTION QORTEX_GRAPH; do
+    if grep -q "^$var=" "$DOCKER_ENV_TEMPLATE"; then
+      log_pass "Docker env template has $var"
+    else
+      log_fail "Docker env template missing $var"
+    fi
+  done
+
+  # Check OTEL vars are present (conditional)
+  if grep -q "QORTEX_OTEL_ENABLED" "$DOCKER_ENV_TEMPLATE"; then
+    log_pass "Docker env template has OTEL config"
+  else
+    log_fail "Docker env template missing OTEL config"
+  fi
+else
+  log_fail "qortex.env Docker template missing"
+fi
+
 echo ""
 
 # ============================================================
@@ -253,18 +293,49 @@ else
   log_fail "Tasks missing interop.yaml deployment"
 fi
 
-# Test: uv install guard
-if grep -q "Check if uv is installed" "$TASKS_FILE"; then
-  log_pass "Tasks check for uv installation"
+# Test: Docker deployment (replaces uv + systemd)
+if grep -q "docker pull" "$TASKS_FILE"; then
+  log_pass "Tasks pull Docker image"
 else
-  log_fail "Tasks missing uv install check"
+  log_fail "Tasks missing Docker image pull"
 fi
 
-# Test: qortex installation via uv
-if grep -q "uv tool install.*qortex" "$TASKS_FILE"; then
-  log_pass "Tasks install qortex via uv tool"
+if grep -q "docker run" "$TASKS_FILE"; then
+  log_pass "Tasks run Docker container"
 else
-  log_fail "Tasks missing qortex installation"
+  log_fail "Tasks missing Docker container run"
+fi
+
+if grep -q "docker volume create" "$TASKS_FILE"; then
+  log_pass "Tasks create Docker data volume"
+else
+  log_fail "Tasks missing Docker data volume creation"
+fi
+
+if grep -q "network host" "$TASKS_FILE"; then
+  log_pass "Tasks use host network (for localhost access)"
+else
+  log_fail "Tasks missing host network mode"
+fi
+
+if grep -q "env-file" "$TASKS_FILE"; then
+  log_pass "Tasks pass env file to Docker container"
+else
+  log_fail "Tasks missing env-file flag"
+fi
+
+# Test: Health check wait
+if grep -q "v1/health" "$TASKS_FILE"; then
+  log_pass "Tasks wait for health check endpoint"
+else
+  log_fail "Tasks missing health check wait"
+fi
+
+# Test: Old systemd cleanup
+if grep -q "Stop and disable old qortex systemd" "$TASKS_FILE"; then
+  log_pass "Tasks clean up old systemd services"
+else
+  log_fail "Tasks missing systemd cleanup"
 fi
 
 # Test: OTEL profile.d deployment
@@ -305,7 +376,7 @@ echo ""
 
 DEFAULTS_FILE="$ROLE_DIR/defaults/main.yml"
 
-for var in qortex_enabled qortex_install qortex_extras qortex_otel_enabled qortex_otel_endpoint qortex_otel_protocol qortex_prometheus_enabled qortex_prometheus_port; do
+for var in qortex_enabled qortex_docker_image qortex_docker_container qortex_docker_volume qortex_serve_enabled qortex_serve_port qortex_http_transport qortex_otel_enabled qortex_otel_endpoint qortex_otel_protocol qortex_prometheus_enabled qortex_prometheus_port; do
   if grep -q "^$var:" "$DEFAULTS_FILE"; then
     log_pass "Default defined: $var"
   else
@@ -345,16 +416,16 @@ if [[ -f "$PLAYBOOK_FILE" ]]; then
     log_info "Qortex role missing when condition"
   fi
 
-  # Test: Role order (qortex should come after buildlog, before sandbox)
-  BUILDLOG_LINE=$(grep -n "role: buildlog" "$PLAYBOOK_FILE" | head -1 | cut -d: -f1 || echo "0")
+  # Test: Role order (qortex should come after docker, before sandbox)
+  DOCKER_LINE=$(grep -n "role: docker" "$PLAYBOOK_FILE" | head -1 | cut -d: -f1 || echo "0")
   QORTEX_LINE=$(grep -n "role: qortex" "$PLAYBOOK_FILE" | head -1 | cut -d: -f1 || echo "0")
   SANDBOX_LINE=$(grep -n "role: sandbox" "$PLAYBOOK_FILE" | head -1 | cut -d: -f1 || echo "0")
 
-  if [[ "$BUILDLOG_LINE" != "0" && "$QORTEX_LINE" != "0" ]]; then
-    if [[ "$QORTEX_LINE" -gt "$BUILDLOG_LINE" ]]; then
-      log_pass "Role order correct (buildlog before qortex)"
+  if [[ "$DOCKER_LINE" != "0" && "$QORTEX_LINE" != "0" ]]; then
+    if [[ "$QORTEX_LINE" -gt "$DOCKER_LINE" ]]; then
+      log_pass "Role order correct (docker before qortex)"
     else
-      log_fail "Role order wrong (qortex should come after buildlog)"
+      log_fail "Role order wrong (qortex should come after docker)"
     fi
   fi
 
@@ -415,6 +486,32 @@ if [[ -f "$BOOTSTRAP_FILE" ]]; then
   fi
 else
   log_fail "bootstrap.sh not found"
+fi
+
+echo ""
+
+# ============================================================
+# SECTION 8: Handler Validation
+# ============================================================
+echo "▸ Handler Validation"
+echo ""
+
+HANDLERS_FILE="$ROLE_DIR/handlers/main.yml"
+
+if [[ -f "$HANDLERS_FILE" ]]; then
+  if grep -q "Restart qortex container" "$HANDLERS_FILE"; then
+    log_pass "Handler: Restart qortex container"
+  else
+    log_fail "Handler missing: Restart qortex container"
+  fi
+
+  if grep -q "docker restart" "$HANDLERS_FILE"; then
+    log_pass "Handler uses docker restart (not systemctl)"
+  else
+    log_fail "Handler not using docker restart"
+  fi
+else
+  log_fail "Handlers file missing"
 fi
 
 echo ""
