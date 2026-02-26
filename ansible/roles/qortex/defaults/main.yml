@@ -11,7 +11,8 @@ qortex_enabled: true
 qortex_docker_image: "ghcr.io/peleke/qortex:latest"
 qortex_docker_container: "qortex"
 
-# Data volume — persists sqlite DB, vec index, learning state across restarts.
+# Data volume — mounted at /root/.qortex inside the container.
+# Persists sqlite DB, vec index, learning state across restarts.
 qortex_docker_volume: "qortex_data"
 
 # Install qortex CLI via uv (optional — for ad-hoc commands, not required for service)

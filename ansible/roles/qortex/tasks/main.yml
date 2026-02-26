@@ -214,8 +214,7 @@
       --network host
       --restart unless-stopped
       --env-file /etc/openclaw/qortex.env
-      -v {{ qortex_docker_volume }}:/data
-      -e QORTEX_STATE_DIR=/data
+      -v {{ qortex_docker_volume }}:/root/.qortex
       {{ qortex_docker_image }}
   register: docker_run
   changed_when: docker_run.rc == 0
