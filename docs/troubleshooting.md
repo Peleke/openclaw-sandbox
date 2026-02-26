@@ -505,13 +505,28 @@ Manual runs from the terminal work without this because the terminal app already
 
 Common causes:
 
-1. **qortex connection dropped**: the shared MCP connection timed out. Restart the gateway: `bilrost restart`.
-2. **qortex not installed**: check `limactl shell openclaw-sandbox -- qortex --version`.
-3. **OTEL env not loaded**: check `limactl shell openclaw-sandbox -- cat /etc/openclaw/qortex-otel.env`.
+1. **qortex container not running**: check `limactl shell openclaw-sandbox -- docker ps | grep qortex`. If the container is stopped, reprovision with `bilrost up`.
+2. **HTTP transport misconfigured**: check that `openclaw.json` has `transport: "http"` in `learning.qortex`. Run `limactl shell openclaw-sandbox -- bash -c 'jq ".learning.qortex" ~/.openclaw/openclaw.json'`.
+3. **qortex health check failing**: check `limactl shell openclaw-sandbox -- curl -s http://localhost:8400/v1/health`.
+4. **OTEL env not loaded**: check `limactl shell openclaw-sandbox -- cat /etc/openclaw/qortex-otel.env`.
 
 ### Memory Tools Not Visible to Agent
 
 See the detailed troubleshooting in [Qortex configuration](configuration/qortex.md#if-the-agent-does-not-see-memory-tools).
+
+### Old Systemd Services Conflicting
+
+If you upgraded from a previous version that used systemd + uv for qortex, the old `qortex.service` and `qortex-mcp.service` units are automatically stopped and removed during provisioning. If conflicts persist:
+
+```bash
+# Check for leftover units
+limactl shell openclaw-sandbox -- systemctl status qortex qortex-mcp
+
+# Manual cleanup
+limactl shell openclaw-sandbox -- sudo systemctl stop qortex qortex-mcp 2>/dev/null
+limactl shell openclaw-sandbox -- sudo rm -f /etc/systemd/system/qortex.service /etc/systemd/system/qortex-mcp.service
+limactl shell openclaw-sandbox -- sudo systemctl daemon-reload
+```
 
 ---
 

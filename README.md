@@ -448,7 +448,7 @@ openclaw-sandbox/
 │       ├── firewall/             # UFW network policy
 │       ├── sync-gate/            # Gated sync validation pipeline
 │       ├── buildlog/             # buildlog + MCP registration
-│       ├── qortex/               # Qortex interop + Memgraph
+│       ├── qortex/               # Qortex Docker container + interop
 │       ├── tailscale/            # Tailscale VPN integration
 │       └── cadence/              # Service startup sequencing
 ├── scripts/

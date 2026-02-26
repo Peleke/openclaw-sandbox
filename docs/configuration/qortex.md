@@ -1,20 +1,19 @@
 # Qortex Interop
 
-[Qortex](https://github.com/Peleke/qortex) provides vector search, knowledge graph retrieval, and a Thompson Sampling bandit for the learning pipeline. The sandbox's qortex role installs the CLI, deploys environment config, and wires the gateway to use qortex as its memory and learning backend.
+[Qortex](https://github.com/Peleke/qortex) provides vector search, knowledge graph retrieval, and a Thompson Sampling bandit for the learning pipeline. The sandbox's qortex role deploys qortex as a Docker container, sets up seed exchange directories, and wires the gateway to use qortex as its memory and learning backend via HTTP REST.
 
 ## What It Does
 
-The qortex role handles nine things:
+The qortex role handles eight things:
 
-1. **CLI installation** via `uv tool install qortex[mcp,vec-sqlite,observability,nlp]` (includes spaCy for concept extraction). When `qortex_serve_enabled` is true, the `server` extra is appended automatically. When pgvector is the vector backend, the `vec-pgvector` extra is also included.
-2. **Concept extraction setup**: downloads the spaCy `en_core_web_sm` model when `qortex_extraction` is `spacy` (default)
+1. **Docker container deployment**: pulls `ghcr.io/peleke/qortex:latest` and runs it with host networking. The image ships with the embedding model (all-MiniLM-L6-v2), spaCy (`en_core_web_sm`), and the full extraction pipeline baked in -- no runtime downloads needed.
+2. **Data volume**: creates a named Docker volume (`qortex_data`) mounted at `/root/.qortex` inside the container for persisting the SQLite database, vector index, and learning state across restarts.
 3. **Seed exchange directories** for structured data handoff (`~/.qortex/seeds/{pending,processed,failed}`)
 4. **Signals directory** for projection output (`~/.qortex/signals/`)
 5. **Buildlog interop config** (`~/.buildlog/interop.yaml`) linking buildlog to qortex's seed pipeline
 6. **OTEL environment** (`/etc/openclaw/qortex-otel.env` + `/etc/profile.d/qortex-otel.sh`) so qortex exports traces and metrics to the host collector
-7. **Gateway config injection** (via `fix-vm-paths.yml`): injects `memorySearch` with `provider: "qortex"` and `learning` config into `openclaw.json` so the gateway uses qortex for both memory tools and bandit-based tool selection
-8. **HTTP service** (`qortex serve`): when `qortex_serve_enabled` is true, deploys a persistent REST API server as a systemd service with API key + HMAC-SHA256 authentication
-9. **PgVector integration**: when `qortex_vec_backend` is `pgvector`, the qortex HTTP service connects to the pgvector PostgreSQL container for vector search instead of the default SQLite backend
+7. **Gateway config injection** (via `fix-vm-paths.yml`): injects `memorySearch` with `provider: "qortex"` and `learning` config into `openclaw.json`, using HTTP REST transport (`transport: "http"`) to connect to the Docker container instead of spawning an MCP subprocess
+8. **Old systemd cleanup**: stops, disables, and removes legacy `qortex.service` and `qortex-mcp.service` units from previous provisioning (systemd + uv deployment is fully replaced by Docker)
 
 ## Setup
 
@@ -27,6 +26,8 @@ bilrost up
 # Using bootstrap.sh directly
 ./bootstrap.sh --openclaw ~/Projects/openclaw
 ```
+
+The Docker image is pulled automatically on first provision. On subsequent provisions, the pull is **skipped if the image is already loaded locally**. This supports offline and air-gapped VMs where registry access may not be available.
 
 ### With Memgraph (Graph Database)
 
@@ -54,16 +55,15 @@ To use PostgreSQL + pgvector instead of the default SQLite vector backend:
 
 ```bash
 # Using the Bilrost CLI
-bilrost up --pgvector --qortex-serve
+bilrost up --pgvector
 
 # Using bootstrap.sh directly
 ./bootstrap.sh --openclaw ~/Projects/openclaw \
   -e "pgvector_enabled=true" \
-  -e "qortex_serve_enabled=true" \
   -e "qortex_vec_backend=pgvector"
 ```
 
-This deploys a persistent PostgreSQL container with the pgvector extension (`pgvector/pgvector:pg16`) and configures the qortex HTTP service to use it as the vector store. The pgvector role:
+This deploys a persistent PostgreSQL container with the pgvector extension (`pgvector/pgvector:pg16`) and configures the qortex Docker container to use it as the vector store. The pgvector role:
 
 1. Creates a Docker Compose project at `/opt/pgvector`
 2. Starts a PostgreSQL container (`qortex-pgvector`) with host networking
@@ -83,22 +83,30 @@ This deploys a persistent PostgreSQL container with the pgvector extension (`pgv
 !!! note "PgVector requires Docker"
     The pgvector role depends on Docker CE being installed (`docker_enabled: true`, which is the default). If you used `--no-docker`, pgvector cannot be enabled.
 
-## Qortex HTTP Service
+## Docker Container Deployment
 
-When `qortex_serve_enabled` is true, the role deploys a persistent REST API server as a systemd service (`qortex.service`). This provides HTTP endpoints for vector search, knowledge graph queries, and learning pipeline operations.
+Qortex runs as a Docker container with host networking. The container serves a REST API that the gateway connects to via HTTP transport.
 
-### Enabling the HTTP Service
+### Container Configuration
 
-```bash
-# Using the Bilrost CLI
-bilrost up --qortex-serve
+| Setting | Value |
+|---------|-------|
+| Image | `ghcr.io/peleke/qortex:latest` |
+| Container name | `qortex` |
+| Network | `host` (binds to `localhost:8400`) |
+| Restart policy | `unless-stopped` |
+| Data volume | `qortex_data` mounted at `/root/.qortex` |
+| Environment | `/etc/openclaw/qortex.env` |
 
-# Using bootstrap.sh
-./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_serve_enabled=true"
+### Baked-In Dependencies
 
-# With pgvector backend
-bilrost up --pgvector --qortex-serve
-```
+The Docker image includes everything needed to run qortex without runtime downloads:
+
+- **Embedding model**: `all-MiniLM-L6-v2` (sentence-transformers)
+- **NLP model**: spaCy `en_core_web_sm` for concept extraction
+- **Extraction pipeline**: full spaCy-based extraction ready out of the box
+
+`HF_HUB_OFFLINE=1` is set in the environment to prevent HuggingFace model downloads at runtime.
 
 ### API Authentication
 
@@ -112,29 +120,15 @@ On first provision, a 256-bit random API key is generated via `openssl rand -hex
 Authorization: Bearer <api-key>
 ```
 
+The gateway automatically reads this key and includes it in all HTTP requests to the qortex container.
+
 **HMAC-SHA256 Authentication**
 
 For request signing, set `qortex_hmac_secret` to a shared secret. Clients sign the request body with HMAC-SHA256 and include the signature in the `X-Signature` header.
 
-### Systemd Service
+### Environment File
 
-The `qortex.service` unit runs as the Ansible provisioning user with hardened settings:
-
-```ini
-[Unit]
-Description=Qortex Knowledge Graph Service
-After=network-online.target docker.service  # docker.service only when pgvector_enabled
-
-[Service]
-Type=simple
-EnvironmentFile=/etc/openclaw/qortex.env
-EnvironmentFile=/etc/openclaw/qortex-otel.env  # only when qortex_otel_enabled
-ExecStart=~/.local/bin/qortex serve --host 0.0.0.0 --port 8400
-NoNewPrivileges=true
-ProtectSystem=strict
-```
-
-The environment file (`/etc/openclaw/qortex.env`) contains:
+The environment file (`/etc/openclaw/qortex.env`) is passed to the Docker container via `--env-file` and contains:
 
 | Variable | Value | Condition |
 |----------|-------|-----------|
@@ -147,20 +141,100 @@ The environment file (`/etc/openclaw/qortex.env`) contains:
 | OTEL variables | OTEL endpoint and protocol | When `qortex_otel_enabled` |
 | `QORTEX_PROMETHEUS_PORT` | `9090` | When `qortex_prometheus_enabled` |
 
-### HTTP Service Verification
+### Health Check
+
+After starting the container, the role waits for the `/v1/health` endpoint to return HTTP 200, with up to 30 retries at 5-second intervals.
+
+### Container Verification
 
 ```bash
-# Check qortex HTTP service is running
-limactl shell openclaw-sandbox -- systemctl status qortex
+# Check qortex container is running
+limactl shell openclaw-sandbox -- docker ps | grep qortex
+
+# Check container logs
+limactl shell openclaw-sandbox -- docker logs qortex
 
 # Check the API key
 limactl shell openclaw-sandbox -- sudo cat /etc/openclaw/qortex-api-key
 
-# Test the endpoint (from inside the VM)
+# Test the health endpoint (from inside the VM)
 limactl shell openclaw-sandbox -- bash -c \
   'curl -s -H "Authorization: Bearer $(sudo cat /etc/openclaw/qortex-api-key)" \
-   http://localhost:8400/health'
+   http://localhost:8400/v1/health'
+
+# Check the data volume
+limactl shell openclaw-sandbox -- docker volume inspect qortex_data
 ```
+
+## Gateway HTTP Transport
+
+The gateway connects to qortex via HTTP REST instead of spawning an MCP subprocess. This is configured automatically during provisioning.
+
+### How It Works
+
+When `qortex_serve_enabled` is true and `qortex_http_transport` is true (both default), the `fix-vm-paths.yml` task:
+
+1. Injects `memorySearch` with `provider: "qortex"` and `transport: "http"` pointing at `http://localhost:8400`
+2. Injects `learning` config with `transport: "http"` pointing at the same endpoint
+3. Includes the API key in the `Authorization: Bearer` header for both
+4. **Strips the `command` key** from both `memorySearch.qortex` and `learning.qortex` so the gateway does not try to spawn a subprocess alongside the HTTP connection
+
+The `command` stripping is important: without it, the gateway would attempt to launch `qortex mcp-serve` as a subprocess (the old MCP stdio transport), which would conflict with the Docker container's REST endpoint.
+
+### Resulting Config
+
+After provisioning, `openclaw.json` contains:
+
+**Memory search** (vector retrieval via HTTP REST):
+```json
+{
+  "agents": {
+    "defaults": {
+      "memorySearch": {
+        "enabled": true,
+        "provider": "qortex",
+        "qortex": {
+          "transport": "http",
+          "http": {
+            "baseUrl": "http://localhost:8400",
+            "headers": {
+              "Authorization": "Bearer <auto-generated-key>"
+            }
+          },
+          "feedback": true
+        }
+      }
+    }
+  }
+}
+```
+
+**Learning** (bandit selection + observation via HTTP REST):
+```json
+{
+  "learning": {
+    "enabled": true,
+    "phase": "active",
+    "tokenBudget": 8000,
+    "baselineRate": 0.10,
+    "minPulls": 5,
+    "qortex": {
+      "transport": "http",
+      "http": {
+        "baseUrl": "http://localhost:8400",
+        "headers": {
+          "Authorization": "Bearer <auto-generated-key>"
+        }
+      }
+    },
+    "learnerName": "openclaw"
+  }
+}
+```
+
+The gateway also gets `tools.alsoAllow: ["group:memory"]` so memory tools are available regardless of the tool profile.
+
+These injections only happen when the config is missing the relevant keys. Existing user config is preserved and patched, not overwritten.
 
 ## Directory Structure
 
@@ -176,10 +250,18 @@ After provisioning, the VM has:
     └── projections.jsonl   # Signal projection output
 
 ~/.buildlog/
-└── interop.yaml       # Buildlog ↔ Qortex exchange config
+└── interop.yaml       # Buildlog <-> Qortex exchange config
 ```
 
 All directories are created with mode `0750`.
+
+### Docker Resources
+
+```
+Docker container: qortex (host networking, port 8400)
+Docker volume:    qortex_data -> /root/.qortex (inside container)
+Docker image:     ghcr.io/peleke/qortex:latest
+```
 
 ### Interop Configuration
 
@@ -206,22 +288,36 @@ This enables buildlog to:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `qortex_enabled` | `true` | Enable qortex directory setup and interop config |
-| `qortex_install` | `true` | Install qortex CLI via `uv tool install` |
-| `qortex_extras` | `mcp,vec-sqlite,observability,nlp` | Pip extras for qortex (MCP server, vector search, OTEL, spaCy NLP) |
+| `qortex_docker_image` | `ghcr.io/peleke/qortex:latest` | Docker image for the qortex container |
+| `qortex_docker_container` | `qortex` | Docker container name |
+| `qortex_docker_volume` | `qortex_data` | Named Docker volume for persistent data |
+| `qortex_serve_enabled` | `true` | Deploy the qortex Docker container |
+| `qortex_serve_port` | `8400` | HTTP service listen port |
+| `qortex_serve_host` | `0.0.0.0` | HTTP service bind address |
+| `qortex_http_transport` | `true` | Gateway connects via HTTP REST (not MCP subprocess) |
 | `qortex_extraction` | `spacy` | Concept extraction strategy: `spacy`, `llm`, or `none` |
+| `qortex_vec_backend` | `sqlite` | Vector search backend: `sqlite` or `pgvector` |
+| `qortex_pgvector_dsn` | `postgresql://qortex:qortex@localhost:5432/qortex` | PostgreSQL connection string for pgvector backend |
+| `qortex_api_keys` | `""` (auto-generated on first provision) | Comma-separated API keys for HTTP service auth |
+| `qortex_hmac_secret` | `""` | Shared secret for HMAC-SHA256 request signing |
 | `qortex_otel_enabled` | `true` | Export OpenTelemetry traces and Prometheus metrics |
 | `qortex_otel_endpoint` | `http://host.lima.internal:4318` | OTEL collector endpoint on the host |
 | `qortex_otel_protocol` | `http/protobuf` | OTEL exporter wire protocol |
 | `qortex_prometheus_enabled` | `true` | Expose a Prometheus metrics endpoint for Grafana |
 | `qortex_prometheus_port` | `9090` | Port for Prometheus scraping |
-| `qortex_serve_enabled` | `false` | Enable the qortex HTTP service (REST API server) |
-| `qortex_serve_port` | `8400` | HTTP service listen port |
-| `qortex_serve_host` | `0.0.0.0` | HTTP service bind address |
-| `qortex_vec_backend` | `sqlite` | Vector search backend: `sqlite` or `pgvector` |
-| `qortex_pgvector_dsn` | `postgresql://qortex:qortex@localhost:5432/qortex` | PostgreSQL connection string for pgvector backend |
-| `qortex_api_keys` | `""` (auto-generated on first provision) | Comma-separated API keys for HTTP service auth |
-| `qortex_hmac_secret` | `""` | Shared secret for HMAC-SHA256 request signing |
-| `qortex_wheel_dir` | `""` | Path to pre-built wheels directory (empty = install from PyPI) |
+| `qortex_install_cli` | `false` | Install lightweight qortex CLI via `uv` (for ad-hoc commands, not required for Docker service) |
+
+### Deprecated Variables
+
+These variables are retained for backward compatibility but are no longer used by the Docker deployment:
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `qortex_install` | `false` | Replaced by Docker container; use `qortex_install_cli` for ad-hoc CLI |
+| `qortex_extras` | `""` | No longer needed; Docker image has all dependencies baked in |
+| `qortex_wheel_dir` | `""` | No longer needed; Docker image replaces wheel-based installs |
+| `qortex_mcp_enabled` | `false` | MCP HTTP service replaced by REST on `qortex_serve_port` |
+| `qortex_mcp_port` | `8401` | Unused; REST runs on `qortex_serve_port` |
 
 Override with `-e`:
 
@@ -238,11 +334,14 @@ Override with `-e`:
 # Disable extraction entirely
 ./bootstrap.sh --openclaw ~/Projects/openclaw -e "qortex_extraction=none"
 
-# Enable HTTP service with pgvector backend
+# Use pgvector backend
 ./bootstrap.sh --openclaw ~/Projects/openclaw \
-  -e "qortex_serve_enabled=true" \
   -e "qortex_vec_backend=pgvector" \
   -e "pgvector_enabled=true"
+
+# Use a custom Docker image
+./bootstrap.sh --openclaw ~/Projects/openclaw \
+  -e "qortex_docker_image=ghcr.io/peleke/qortex:v2.0.0"
 ```
 
 ## Observability (OTEL + Prometheus)
@@ -262,9 +361,11 @@ Both set the same variables:
 | `QORTEX_PROMETHEUS_ENABLED` | `true` | Expose metrics endpoint |
 | `QORTEX_PROMETHEUS_PORT` | `9090` | Prometheus scrape port |
 | `QORTEX_EXTRACTION` | `spacy` | Concept extraction strategy (`spacy`, `llm`, `none`) |
-| `HF_HUB_OFFLINE` | `1` | Prevent HuggingFace model downloads at runtime (models pre-cached during provisioning) |
+| `HF_HUB_OFFLINE` | `1` | Prevent HuggingFace model downloads at runtime (models baked into Docker image) |
 
 The firewall role allows TCP 4318 outbound to the Lima host gateway IP (`192.168.5.2`) when OTEL is enabled. Loopback traffic for Prometheus (port 9090) is already allowed.
+
+The Docker container also receives OTEL variables via `/etc/openclaw/qortex.env` (passed as `--env-file` to `docker run`), so traces and metrics are exported from inside the container.
 
 To view traces and metrics on the host, run an OTEL collector (e.g. Grafana Alloy) listening on port 4318, and point Grafana at Prometheus on `localhost:9090` (forwarded through Lima).
 
@@ -272,9 +373,9 @@ To view traces and metrics on the host, run an OTEL collector (e.g. Grafana Allo
 
 The gateway uses qortex's Thompson Sampling bandit to decide which tools, skills, and context files to include in each agent run. This is configured automatically on provision.
 
-The `fix-vm-paths.yml` task injects two blocks into `openclaw.json` when `qortex_enabled` is true:
+The `fix-vm-paths.yml` task injects two blocks into `openclaw.json` when `qortex_enabled` is true. Both use HTTP REST transport to communicate with the Docker container:
 
-**Memory search** (vector retrieval via qortex MCP):
+**Memory search** (vector retrieval via HTTP REST):
 ```json
 {
   "agents": {
@@ -282,7 +383,14 @@ The `fix-vm-paths.yml` task injects two blocks into `openclaw.json` when `qortex
       "memorySearch": {
         "enabled": true,
         "provider": "qortex",
-        "qortex": { "command": "qortex mcp-serve", "feedback": true }
+        "qortex": {
+          "transport": "http",
+          "http": {
+            "baseUrl": "http://localhost:8400",
+            "headers": { "Authorization": "Bearer <key>" }
+          },
+          "feedback": true
+        }
       }
     }
   }
@@ -297,8 +405,14 @@ The `fix-vm-paths.yml` task injects two blocks into `openclaw.json` when `qortex
     "phase": "active",
     "tokenBudget": 8000,
     "baselineRate": 0.10,
-    "minPulls": 20,
-    "qortex": { "command": "qortex mcp-serve" },
+    "minPulls": 5,
+    "qortex": {
+      "transport": "http",
+      "http": {
+        "baseUrl": "http://localhost:8400",
+        "headers": { "Authorization": "Bearer <key>" }
+      }
+    },
     "learnerName": "openclaw"
   }
 }
@@ -317,50 +431,43 @@ The qortex role guards `~/.buildlog` directory creation. If the buildlog role ha
 
 ## Upgrading qortex
 
-Use `bilrost upgrade` to build, deploy, and install qortex wheels from local source into the sandbox. This replaces ad-hoc wheel copying and `uv tool install` commands.
-
-### From local source (build + deploy)
+Since qortex now runs as a Docker container, upgrading is a matter of pulling a new image and restarting the container:
 
 ```bash
-bilrost upgrade -q ~/Projects/qortex
+# Pull the latest image and reprovision
+bilrost up
 ```
 
-This:
+This will pull the newest `ghcr.io/peleke/qortex:latest` image (if a newer version is available) and recreate the container. The data volume (`qortex_data`) persists across container recreations.
 
-1. Builds wheels for `qortex`, `qortex-online`, `qortex-observe`, `qortex-ingest`, and `qortex-learning`
-2. SCPs them to the VM
-3. Installs with `uv tool install qortex[all]` plus all namespace packages
-4. Ensures the spaCy `en_core_web_sm` model is installed
-5. Restarts the gateway
-
-### From pre-built wheels
+### Using a specific image tag
 
 ```bash
-bilrost upgrade -w ~/Projects/qortex/dist
+bilrost up -e "qortex_docker_image=ghcr.io/peleke/qortex:v2.0.0"
 ```
 
-Skips the build step. Useful when you've already built wheels or received them from CI.
+### Optional CLI for ad-hoc commands
 
-### From Test PyPI (development builds)
+If you need the `qortex` CLI for ad-hoc commands (e.g., `qortex status`, `qortex ingest`) without going through the Docker container, enable the lightweight CLI install:
 
 ```bash
-bilrost upgrade --dev
+bilrost up -e "qortex_install_cli=true"
 ```
 
-Installs the latest pre-release build from Test PyPI. Useful for testing CI-published packages without building locally. Mutually exclusive with `--qortex-dir` and `--wheel-dir`.
-
-### Options
-
-| Flag | Description |
-|------|-------------|
-| `-q`, `--qortex-dir` | Path to local qortex source directory |
-| `-w`, `--wheel-dir` | Path to pre-built wheels directory |
-| `--dev` | Install latest dev build from Test PyPI |
-| `--skip-restart` | Install without restarting the gateway |
+This installs the CLI via `uv tool install` but is not required for the Docker service.
 
 ## Verification Commands
 
 ```bash
+# Check qortex Docker container is running
+limactl shell openclaw-sandbox -- docker ps | grep qortex
+
+# Check container logs
+limactl shell openclaw-sandbox -- docker logs qortex --tail 50
+
+# Check data volume
+limactl shell openclaw-sandbox -- docker volume inspect qortex_data
+
 # Check seed directories exist
 limactl shell openclaw-sandbox -- ls -la ~/.qortex/seeds/
 
@@ -370,14 +477,10 @@ limactl shell openclaw-sandbox -- ls -la ~/.qortex/signals/
 # Check interop config
 limactl shell openclaw-sandbox -- cat ~/.buildlog/interop.yaml
 
-# Verify qortex CLI is installed
-limactl shell openclaw-sandbox -- qortex --version
-
-# Check uv tool list
-limactl shell openclaw-sandbox -- ~/.local/bin/uv tool list | grep qortex
-
-# Check qortex HTTP service (when qortex_serve_enabled)
-limactl shell openclaw-sandbox -- systemctl status qortex
+# Test health endpoint
+limactl shell openclaw-sandbox -- bash -c \
+  'curl -s -H "Authorization: Bearer $(sudo cat /etc/openclaw/qortex-api-key)" \
+   http://localhost:8400/v1/health'
 
 # Check pgvector container (when pgvector_enabled)
 limactl shell openclaw-sandbox -- docker ps | grep qortex-pgvector
@@ -385,11 +488,44 @@ limactl shell openclaw-sandbox -- docker ps | grep qortex-pgvector
 
 ## Troubleshooting
 
-### qortex CLI not found
+### Qortex container not running
 
-1. Check uv is installed: `limactl shell openclaw-sandbox -- ~/.local/bin/uv --version`
-2. Check tool list: `limactl shell openclaw-sandbox -- ~/.local/bin/uv tool list`
-3. Re-provision: `bilrost up` or `./bootstrap.sh --openclaw ~/Projects/openclaw`
+1. Check container status: `limactl shell openclaw-sandbox -- docker ps -a | grep qortex`
+2. Check container logs: `limactl shell openclaw-sandbox -- docker logs qortex`
+3. Check the environment file: `limactl shell openclaw-sandbox -- sudo cat /etc/openclaw/qortex.env`
+4. Check the image exists: `limactl shell openclaw-sandbox -- docker images | grep qortex`
+5. If the image is missing, reprovision: `bilrost up`
+
+### Qortex container starts but health check fails
+
+1. Check the container is listening: `limactl shell openclaw-sandbox -- curl -s http://localhost:8400/v1/health`
+2. Check container logs for startup errors: `limactl shell openclaw-sandbox -- docker logs qortex --tail 100`
+3. Verify the port is not in use by another process: `limactl shell openclaw-sandbox -- ss -tlnp | grep 8400`
+
+### Old systemd services still running
+
+The qortex role automatically stops and removes `qortex.service` and `qortex-mcp.service` on provision. If they persist:
+
+1. Check: `limactl shell openclaw-sandbox -- systemctl status qortex qortex-mcp`
+2. Manually stop: `limactl shell openclaw-sandbox -- sudo systemctl stop qortex qortex-mcp`
+3. Remove unit files: `limactl shell openclaw-sandbox -- sudo rm /etc/systemd/system/qortex.service /etc/systemd/system/qortex-mcp.service && sudo systemctl daemon-reload`
+
+### Image pull fails (air-gapped VM)
+
+If the VM cannot reach `ghcr.io`, pre-load the image:
+
+```bash
+# On the host: save the image to a tar file
+docker pull ghcr.io/peleke/qortex:latest
+docker save ghcr.io/peleke/qortex:latest -o qortex.tar
+
+# Copy into the VM and load
+limactl copy qortex.tar openclaw-sandbox:~/qortex.tar
+limactl shell openclaw-sandbox -- docker load -i ~/qortex.tar
+
+# Reprovision (will skip the pull since the image is now loaded)
+bilrost up
+```
 
 ### interop.yaml missing
 
@@ -410,14 +546,6 @@ bilrost destroy -f
 ./bootstrap.sh --openclaw ~/Projects/openclaw --memgraph
 ```
 
-### Qortex HTTP service not starting
-
-1. Check the service status: `limactl shell openclaw-sandbox -- systemctl status qortex`
-2. Check the journal: `limactl shell openclaw-sandbox -- journalctl -u qortex --no-pager -n 50`
-3. Verify the environment file: `limactl shell openclaw-sandbox -- sudo cat /etc/openclaw/qortex.env`
-4. Verify the API key file exists: `limactl shell openclaw-sandbox -- sudo ls -la /etc/openclaw/qortex-api-key`
-5. Ensure the `server` extra was installed: `limactl shell openclaw-sandbox -- qortex serve --help`
-
 ### PgVector container not running
 
 1. Check container status: `limactl shell openclaw-sandbox -- docker ps -a | grep pgvector`
@@ -427,33 +555,33 @@ bilrost destroy -f
 
 ## OpenClaw memory backend (qortex)
 
-When the OpenClaw gateway runs in the sandbox, the agent can use **memory tools** (`memory_search`, `memory_get`, and optionally `memory_feedback`) backed by qortex instead of the default SQLite + embeddings pipeline. That lets the agent query the knowledge graph via the qortex MCP server.
+When the OpenClaw gateway runs in the sandbox, the agent can use **memory tools** (`memory_search`, `memory_get`, and optionally `memory_feedback`) backed by qortex instead of the default SQLite + embeddings pipeline. That lets the agent query the knowledge graph via qortex's HTTP REST API.
 
 ### How it works
 
-- OpenClaw’s **memory-core** plugin registers the memory tools. They are only created when **memory search is enabled** and the plugin receives the runtime config.
-- The backend is selected by `agents.defaults.memorySearch.provider`. Set it to `"qortex"` to use the qortex MCP server; otherwise OpenClaw uses the SQLite/embedding path (openai/gemini/local).
-- With `provider: "qortex"`, the gateway spawns the qortex MCP subprocess (e.g. `qortex mcp-serve` or `uvx qortex mcp-serve`) and forwards `memory_search` / `memory_get` / `memory_feedback` to it.
+- OpenClaw's **memory-core** plugin registers the memory tools. They are only created when **memory search is enabled** and the plugin receives the runtime config.
+- The backend is selected by `agents.defaults.memorySearch.provider`. Set it to `"qortex"` to use the qortex backend; otherwise OpenClaw uses the SQLite/embedding path (openai/gemini/local).
+- With `provider: "qortex"` and `transport: "http"`, the gateway sends HTTP requests to the qortex Docker container at `http://localhost:8400` for `memory_search` / `memory_get` / `memory_feedback`.
 
 ### Intended flow when memory tools are available
 
-When the agent **has** `memory_search` and `memory_get` in its tool list, OpenClaw’s system prompt tells it: *before answering anything about prior work, decisions, dates, people, preferences, or todos, run memory_search on MEMORY.md + memory/*.md, then use memory_get to pull only the needed lines.* So the intended flow is **memory_search → memory_get**, not manual `read` of the files.
+When the agent **has** `memory_search` and `memory_get` in its tool list, OpenClaw's system prompt tells it: *before answering anything about prior work, decisions, dates, people, preferences, or todos, run memory_search on MEMORY.md + memory/*.md, then use memory_get to pull only the needed lines.* So the intended flow is **memory_search -> memory_get**, not manual `read` of the files.
 
-If an agent says something like “I don’t use memory_search, I just read MEMORY.md manually”, that session almost certainly **does not have** the memory tools. For example: Cursor/Claude in the IDE, or a client that isn’t using the OpenClaw gateway’s tool list. In that case the model falls back to describing “I read the memory files with read”. To get the real flow, use a session that goes through the gateway (e.g. Telegram, the Mac app, or whatever invokes the gateway with the same config) so the agent receives the memory tools.
+If an agent says something like "I don't use memory_search, I just read MEMORY.md manually", that session almost certainly **does not have** the memory tools. For example: Cursor/Claude in the IDE, or a client that isn't using the OpenClaw gateway's tool list. In that case the model falls back to describing "I read the memory files with read". To get the real flow, use a session that goes through the gateway (e.g. Telegram, the Mac app, or whatever invokes the gateway with the same config) so the agent receives the memory tools.
 
 ### Config required for the agent to see memory tools
 
-1. **Memory search enabled**  
+1. **Memory search enabled**
    `agents.defaults.memorySearch.enabled` must be `true` (or omitted; it defaults to true).
 
-2. **Provider set to qortex**  
+2. **Provider set to qortex**
    `agents.defaults.memorySearch.provider: "qortex"` so the gateway uses the qortex backend.
 
-3. **Memory slot**  
+3. **Memory slot**
    The default memory plugin is **memory-core** (`plugins.slots.memory: "memory-core"`). Do not set the slot to another plugin if you want the built-in memory tools.
 
-4. **Tool policy**  
-   The agent’s tool policy must allow the memory tools (e.g. `group:memory` or `memory_search`, `memory_get`, `memory_feedback`). The **coding** profile includes `group:memory`; the **messaging** profile does not. So if your session uses `tools.profile: "messaging"` (common for Telegram/TUI), the memory tools can be filtered out, and visibility may change run-to-run if the effective profile or agent varies. To make memory tools consistently visible, set `tools.profile` to `"coding"` (or `"full"`), or add `tools.alsoAllow: ["group:memory"]` so memory is allowed even when the profile is messaging.
+4. **Tool policy**
+   The agent's tool policy must allow the memory tools (e.g. `group:memory` or `memory_search`, `memory_get`, `memory_feedback`). The **coding** profile includes `group:memory`; the **messaging** profile does not. So if your session uses `tools.profile: "messaging"` (common for Telegram/TUI), the memory tools can be filtered out, and visibility may change run-to-run if the effective profile or agent varies. To make memory tools consistently visible, set `tools.profile` to `"coding"` (or `"full"`), or add `tools.alsoAllow: ["group:memory"]` so memory is allowed even when the profile is messaging.
 
 **Example (always allow memory on all sessions):** in `openclaw.json`:
 
@@ -475,12 +603,12 @@ Or keep your current profile and add memory only:
 }
 ```
 
-5. **Config present where the gateway runs**  
-   The gateway loads config from `~/.openclaw/openclaw.json` (or your mounted config). That file must contain the above. If you use the sandbox’s config mount, ensure your host `~/.openclaw/openclaw.json` (or the dir you pass to `--config`) includes `agents.defaults.memorySearch`.
+5. **Config present where the gateway runs**
+   The gateway loads config from `~/.openclaw/openclaw.json` (or your mounted config). That file must contain the above. If you use the sandbox's config mount, ensure your host `~/.openclaw/openclaw.json` (or the dir you pass to `--config`) includes `agents.defaults.memorySearch`.
 
 ### Example config (VM / sandbox)
 
-Minimal snippet so the agent sees memory tools and uses qortex in the sandbox:
+Minimal snippet so the agent sees memory tools and uses qortex in the sandbox (this is injected automatically by provisioning):
 
 ```json
 {
@@ -490,7 +618,13 @@ Minimal snippet so the agent sees memory tools and uses qortex in the sandbox:
         "enabled": true,
         "provider": "qortex",
         "qortex": {
-          "command": "qortex mcp-serve",
+          "transport": "http",
+          "http": {
+            "baseUrl": "http://localhost:8400",
+            "headers": {
+              "Authorization": "Bearer <auto-generated-key>"
+            }
+          },
           "feedback": true
         }
       }
@@ -499,11 +633,11 @@ Minimal snippet so the agent sees memory tools and uses qortex in the sandbox:
 }
 ```
 
-In the VM, `qortex` is installed via the qortex Ansible role at `~/.local/bin/qortex`, and the gateway’s PATH includes `~/.local/bin`, so `qortex mcp-serve` works. On the host you might use `"uvx qortex mcp-serve"` if that’s how you run qortex.
+In the VM, the qortex Docker container listens on `localhost:8400` with host networking. The gateway sends HTTP requests to this endpoint. No subprocess spawning is needed.
 
 ### If the agent does not see memory tools
 
-- **Check config key**: it must be `agents.defaults.memorySearch` (not `memory`). If you use the wrong key, OpenClaw never sees your provider setting; `provider` defaults to `"auto"` and the SQLite/embedding path runs (often OpenAI). So “we had qortex but it wasn’t being used” usually means the key was wrong or the merged config didn’t have `memorySearch`. See OpenClaw’s Zod schema or `dist/config/zod-schema.agent-runtime.js` for the exact shape.
+- **Check config key**: it must be `agents.defaults.memorySearch` (not `memory`). If you use the wrong key, OpenClaw never sees your provider setting; `provider` defaults to `"auto"` and the SQLite/embedding path runs (often OpenAI). So "we had qortex but it wasn't being used" usually means the key was wrong or the merged config didn't have `memorySearch`. See OpenClaw's Zod schema or `dist/config/zod-schema.agent-runtime.js` for the exact shape.
 - **Check config is loaded**: the gateway must receive this config when building the tool list (e.g. from `~/.openclaw/openclaw.json` in the VM).
 - **Check plugin**: memory-core must be loaded and the memory slot must be `memory-core` (default). If you set `plugins.slots.memory` to another plugin, the core memory tools are not registered.
 - **Check tool policy**: ensure the agent's effective tool policy allows `memory_search` / `memory_get` (e.g. via `group:memory` or an explicit allow list).
@@ -516,7 +650,8 @@ In the VM, `qortex` is installed via the qortex Ansible role at `~/.local/bin/qo
 ```bash
 limactl shell openclaw-sandbox -- bash -c 'jq "
   .agents.defaults.memorySearch.enabled = true |
-  .agents.defaults.memorySearch.qortex = ((.agents.defaults.memorySearch.qortex // {}) | .command = (.command // \"qortex mcp-serve\")) |
+  .agents.defaults.memorySearch.qortex.transport = \"http\" |
+  .agents.defaults.memorySearch.qortex.http.baseUrl = \"http://localhost:8400\" |
   .tools.alsoAllow = ((.tools.alsoAllow // []) + [\"group:memory\"] | unique)
 " ~/.openclaw/openclaw.json > /tmp/out.json && mv /tmp/out.json ~/.openclaw/openclaw.json'
 bilrost restart
@@ -524,29 +659,35 @@ bilrost restart
 
 ### Verification (in the VM)
 
-Run these from the host. Use `bash -c '...'` so `~` expands inside the VM to the VM user’s home, not the host’s:
+Run these from the host. Use `bash -c '...'` so `~` expands inside the VM to the VM user's home, not the host's:
 
 ```bash
-# Config has memorySearch and provider qortex
+# Config has memorySearch with HTTP transport
 limactl shell openclaw-sandbox -- bash -c 'jq ".agents.defaults.memorySearch" ~/.openclaw/openclaw.json'
 
-# qortex CLI available (used by OpenClaw to spawn MCP server)
-limactl shell openclaw-sandbox -- qortex --version
+# qortex container is running
+limactl shell openclaw-sandbox -- docker ps | grep qortex
+
+# Health check passes
+limactl shell openclaw-sandbox -- bash -c \
+  'curl -s -H "Authorization: Bearer $(sudo cat /etc/openclaw/qortex-api-key)" \
+   http://localhost:8400/v1/health'
 ```
 
 ### Auto-injection on provision
 
-When the sandbox is provisioned with qortex enabled (`qortex_enabled: true`, which is the default), the **gateway** role’s VM path-fix step will:
+When the sandbox is provisioned with qortex enabled (`qortex_enabled: true`, which is the default), the **gateway** role's VM path-fix step will:
 
-- **If `memorySearch` is missing**: inject the full `agents.defaults.memorySearch` block with `enabled`, `provider`, `qortex.command`, and `qortex.feedback`.
-- **If `memorySearch` exists**: patch it to add `enabled: true` and `qortex.command: "qortex mcp-serve"` (or keep your existing `command` if set).
-- Add `group:memory` to `tools.alsoAllow` so the memory tools are allowed even when `tools.profile` is messaging (option 2).
+- **If `memorySearch` is missing**: inject the full `agents.defaults.memorySearch` block with `enabled`, `provider`, and `qortex` containing `transport: "http"` and `http.baseUrl`.
+- **If `memorySearch` exists**: patch it to add `enabled: true` and HTTP transport config.
+- **Strip `command`** from both `memorySearch.qortex` and `learning.qortex` when HTTP transport is active (prevents subprocess conflicts).
+- Add `group:memory` to `tools.alsoAllow` so the memory tools are allowed even when `tools.profile` is messaging.
 
 Provision/re-provision uses `bilrost up` (or `bilrost up --fresh` to destroy and recreate). There is no `bilrost provision` command.
 
 ### Updating config inside the VM
 
-Config in the VM lives at **`~/.openclaw/openclaw.json`** (VM user’s home). Ways to change it:
+Config in the VM lives at **`~/.openclaw/openclaw.json`** (VM user's home). Ways to change it:
 
 1. **Edit in the VM** (survives until next provision overwrite if config is copied from mount):
    ```bash

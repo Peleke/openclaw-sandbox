@@ -93,9 +93,11 @@ The gateway is a Node.js process managed by systemd (`openclaw-gateway.service`)
 - Gets Docker access via `SupplementaryGroups=docker` (no re-login needed)
 - Depends on `workspace.mount` when overlay is active
 
-### Qortex HTTP Service (Optional)
+### Qortex Docker Container
 
-When `qortex_serve_enabled` is true, the qortex role deploys a persistent REST API server as a systemd service (`qortex.service`). This provides HTTP endpoints for vector search and knowledge graph queries, independent of the MCP server used by the gateway.
+Qortex runs as a Docker container (`ghcr.io/peleke/qortex:latest`) with host networking, serving a REST API on port 8400. The image ships with baked-in dependencies (embedding model, spaCy, extraction pipeline) so no runtime downloads are needed.
+
+The gateway connects to qortex via HTTP REST transport (`transport: "http"`) instead of spawning an MCP subprocess. Data is persisted in a named Docker volume (`qortex_data`) mounted at `/root/.qortex` inside the container.
 
 The service supports API key authentication (auto-generated on first provision) and optional HMAC-SHA256 request signing. It can use either SQLite (default) or pgvector as its vector backend.
 
@@ -152,7 +154,7 @@ The Ansible playbook (`ansible/playbook.yml`) executes roles in this order:
 | 9 | `tailscale` | S4 | Set up Tailscale routing |
 | 10 | `cadence` | S7 | Deploy ambient insight pipeline |
 | 11 | `buildlog` | S8 | Install buildlog for ambient learning |
-| 12 | `qortex` | -- | Install qortex CLI, deploy OTEL env, seed exchange dirs, memory + learning config, optional HTTP service |
+| 12 | `qortex` | -- | Deploy qortex Docker container, OTEL env, seed exchange dirs, memory + learning config (HTTP REST transport) |
 | 13 | `sandbox` | S10 | Build sandbox image, configure `openclaw.json` (dual-container) |
 | 14 | `sync-gate` | S9 | Deploy sync helper scripts |
 

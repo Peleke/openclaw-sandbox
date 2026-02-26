@@ -113,7 +113,7 @@ Changes only reach your host through a **validated sync gate** that runs gitleak
 | [Gated Sync](usage/sync-gate.md) | gitleaks scan + path allowlist before any changes reach the host |
 | [GitHub CLI](configuration/github-cli.md) | `gh` installed in VM and sandbox containers with `GH_TOKEN` passthrough |
 | [Obsidian Vault](configuration/obsidian-vault.md) | Vault bind-mounted with overlay protection; iCloud rsync sync |
-| [Qortex Interop](configuration/qortex.md) | Seed exchange directories and buildlog interop for multi-agent coordination |
+| [Qortex Interop](configuration/qortex.md) | Docker-deployed knowledge graph with HTTP REST transport, seed exchange, and buildlog interop |
 | [Telegram Integration](configuration/telegram.md) | Bot integration with pairing-based access control |
 | [Cadence Pipeline](configuration/cadence.md) | Ambient AI: vault watch → insight extraction → Telegram delivery |
 | [Tailscale Routing](configuration/network-policy.md) | Route to your private network via the host |

@@ -322,16 +322,16 @@ Running `bootstrap.sh` again on an existing VM skips creation and just re-runs t
 
 ### `bilrost upgrade`
 
-Build, deploy, and install qortex wheels into the sandbox. Replaces ad-hoc wheel copying and manual `uv tool install` commands.
+Upgrade qortex in the sandbox. Since qortex now runs as a Docker container, upgrading pulls a new image and recreates the container. The data volume (`qortex_data`) persists across upgrades.
 
 ```bash
-# Build from local source, deploy, restart gateway
+# Pull latest image and reprovision
 bilrost upgrade -q ~/Projects/qortex
 
-# Deploy pre-built wheels (skip build step)
+# Deploy pre-built wheels (for CLI only, if qortex_install_cli is enabled)
 bilrost upgrade -w ~/Projects/qortex/dist
 
-# Install latest dev build from Test PyPI
+# Install latest dev build from Test PyPI (CLI only)
 bilrost upgrade --dev
 
 # Install without restarting the gateway
@@ -362,7 +362,7 @@ The `bilrost up` command accepts flags to enable optional subsystems:
 | `--fresh` | Destroy existing VM first, then reprovision |
 | `--memgraph` | Enable Memgraph graph database (overrides profile setting) |
 | `--pgvector` | Enable pgvector PostgreSQL backend (overrides profile setting) |
-| `--qortex-serve` | Enable qortex HTTP service (overrides profile setting) |
+| `--qortex-serve` | Enable qortex HTTP service (default: true since Docker deployment) |
 
 ```bash
 # Enable all optional backends
