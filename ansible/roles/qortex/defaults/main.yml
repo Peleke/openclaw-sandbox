@@ -1,26 +1,47 @@
 ---
-# Qortex Interop Role Defaults
+# Qortex Role Defaults
 
 # Enable qortex seed exchange directories and interop config
 qortex_enabled: true
 
-# Install qortex CLI via uv tool
-qortex_install: true
+# ── Docker deployment ─────────────────────────────────────────────
+# Qortex runs as a Docker container inside the VM.
+# The image has the embedding model (all-MiniLM-L6-v2), spaCy (en_core_web_sm),
+# and full extraction pipeline baked in — no runtime downloads.
+qortex_docker_image: "ghcr.io/peleke/qortex:latest"
+qortex_docker_container: "qortex"
 
-# Pip extras — "vec-sqlite" provides sqlite-vec + sentence-transformers for local vector search
-# "nlp" provides spaCy + qortex-online for concept extraction
-# When memgraph_enabled, the memgraph extra (neo4j driver) is appended automatically
-qortex_extras: "mcp,vec-sqlite,observability,nlp"
+# Data volume — persists sqlite DB, vec index, learning state across restarts.
+qortex_docker_volume: "qortex_data"
 
-# Local wheel directory — when set, install from local wheels instead of PyPI.
-# Expected contents: qortex-*.whl, qortex_online-*.whl, qortex_observe-*.whl
-# Leave empty to install from PyPI.
-qortex_wheel_dir: ""
+# Install qortex CLI via uv (optional — for ad-hoc commands, not required for service)
+qortex_install_cli: false
+
+# ── Service configuration ─────────────────────────────────────────
+qortex_serve_enabled: true
+qortex_serve_port: 8400
+qortex_serve_host: "0.0.0.0"
+
+# Transport: gateway connects via plain HTTP REST (not MCP subprocess).
+# Set automatically — the Docker container serves REST on qortex_serve_port.
+qortex_http_transport: true
 
 # Concept extraction strategy: spacy (default), llm, none
 qortex_extraction: "spacy"
 
-# OpenTelemetry observability
+# Vector backend: sqlite (default) or pgvector
+qortex_vec_backend: "sqlite"
+qortex_pgvector_dsn: "postgresql://qortex:qortex@localhost:5432/qortex"
+
+# Store backend: sqlite (default) or postgres
+qortex_store: "sqlite"
+
+# ── Authentication ─────────────────────────────────────────────────
+# API authentication (comma-separated keys, or empty for no auth)
+qortex_api_keys: ""
+qortex_hmac_secret: ""
+
+# ── Observability ──────────────────────────────────────────────────
 qortex_otel_enabled: true
 qortex_otel_endpoint: "http://host.lima.internal:4318"
 qortex_otel_protocol: "http/protobuf"
@@ -29,21 +50,12 @@ qortex_otel_protocol: "http/protobuf"
 qortex_prometheus_enabled: true
 qortex_prometheus_port: 9090
 
-# HTTP service (qortex serve)
-qortex_serve_enabled: false
-qortex_serve_port: 8400
-qortex_serve_host: "0.0.0.0"
-
-# MCP HTTP service (qortex mcp-serve --transport streamable-http)
-# Runs alongside the REST API on a separate port for gateway connections.
+# ── DEPRECATED ─────────────────────────────────────────────────────
+# MCP HTTP service is fully replaced by REST on qortex_serve_port.
 qortex_mcp_enabled: false
 qortex_mcp_port: 8401
-qortex_mcp_host: "0.0.0.0"
 
-# Vector backend: sqlite (default) or pgvector
-qortex_vec_backend: "sqlite"
-qortex_pgvector_dsn: "postgresql://qortex:qortex@localhost:5432/qortex"
-
-# API authentication (comma-separated keys, or empty for no auth)
-qortex_api_keys: ""
-qortex_hmac_secret: ""
+# Legacy vars (kept for backward compat, unused by Docker deployment)
+qortex_install: false
+qortex_extras: ""
+qortex_wheel_dir: ""
