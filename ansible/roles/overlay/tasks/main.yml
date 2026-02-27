@@ -22,6 +22,7 @@
       ansible.builtin.apt:
         name:
           - inotify-tools
+          - attr
         state: present
         update_cache: true
 
@@ -95,6 +96,31 @@
             group: "{{ ansible_user }}"
             mode: "0755"
 
+        - name: Pre-create writable directories in obsidian upper layer
+          ansible.builtin.file:
+            path: "{{ overlay_upper_base }}/obsidian/upper/{{ item }}"
+            state: directory
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
+            mode: "0777"
+          loop: "{{ overlay_obsidian_upper_dirs | default([]) }}"
+
+        - name: Check opaque xattr on pre-created obsidian dirs
+          ansible.builtin.command:
+            cmd: "getfattr -n trusted.overlay.opaque {{ overlay_upper_base }}/obsidian/upper/{{ item }}"
+          loop: "{{ overlay_obsidian_upper_dirs | default([]) }}"
+          register: obsidian_xattr_check
+          changed_when: false
+          failed_when: false
+
+        - name: Set opaque xattr on pre-created obsidian dirs
+          ansible.builtin.command:
+            cmd: "setfattr -n trusted.overlay.opaque -v y {{ overlay_upper_base }}/obsidian/upper/{{ item.item }}"
+          loop: "{{ obsidian_xattr_check.results }}"
+          when: item.rc != 0
+          register: obsidian_xattr_set
+          changed_when: item.rc != 0
+
         - name: Deploy obsidian overlay mount unit
           ansible.builtin.template:
             src: workspace-obsidian.mount.j2
@@ -164,8 +190,35 @@
       ansible.builtin.systemd:
         name: workspace\x2dobsidian.mount
         enabled: true
-        state: started
+        state: "{{ 'restarted' if (obsidian_xattr_set is defined and obsidian_xattr_set.changed) else 'started' }}"
         daemon_reload: true
+
+    # Vault sync: bridge host Obsidian edits into overlay for inotify
+    - name: Deploy vault-sync service and timer (if vault mounted)
+      when: obsidian_mount_check.stat.exists
+      block:
+        - name: Deploy vault-sync service
+          ansible.builtin.template:
+            src: vault-sync.service.j2
+            dest: /etc/systemd/system/vault-sync.service
+            mode: "0644"
+          notify: Reload systemd
+
+        - name: Deploy vault-sync timer
+          ansible.builtin.template:
+            src: vault-sync.timer.j2
+            dest: /etc/systemd/system/vault-sync.timer
+            mode: "0644"
+          notify: Reload systemd
+
+        - name: Flush handlers for vault-sync units
+          ansible.builtin.meta: flush_handlers
+
+        - name: Enable and start vault-sync timer
+          ansible.builtin.systemd:
+            name: vault-sync.timer
+            enabled: true
+            state: started
 
     # Start audit watcher
     - name: Enable and start overlay watcher

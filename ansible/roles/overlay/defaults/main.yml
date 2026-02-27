@@ -25,5 +25,13 @@ overlay_obsidian_path: /workspace-obsidian
 # YOLO sync interval
 overlay_yolo_sync_interval: "30s"
 
+# Directories to pre-create in obsidian overlay upper layer.
+# Prevents virtiofs copy-up failures when the agent writes to these paths.
+overlay_obsidian_upper_dirs:
+  - Buildlog
+
+# Vault sync interval (rsync host vault changes into overlay for inotify)
+overlay_vault_sync_interval: "30s"
+
 # Watcher log path
 overlay_watcher_log: /var/log/openclaw/overlay-watcher.log

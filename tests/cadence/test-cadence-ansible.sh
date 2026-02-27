@@ -213,11 +213,11 @@ for var in cadence_enabled cadence_vault_path cadence_delivery_channel cadence_l
   fi
 done
 
-# Test: cadence_enabled defaults to false (safe default)
-if grep -q "cadence_enabled: false" "$DEFAULTS_FILE"; then
-  log_pass "cadence_enabled defaults to false (safe)"
+# Test: cadence_enabled defaults to true (starts when vault is mounted)
+if grep -q "cadence_enabled: true" "$DEFAULTS_FILE"; then
+  log_pass "cadence_enabled defaults to true"
 else
-  log_fail "cadence_enabled should default to false"
+  log_fail "cadence_enabled should default to true"
 fi
 
 # Test: Vault path is VM path, not macOS

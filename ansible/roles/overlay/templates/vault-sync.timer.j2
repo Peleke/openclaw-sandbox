@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# Timer for vault sync (host Obsidian edits → overlay merged mount)
+
+[Unit]
+Description=Vault sync timer
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec={{ overlay_vault_sync_interval }}
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

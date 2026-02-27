@@ -3,7 +3,7 @@
 # Ambient AI pipeline for journal → insight → delivery
 
 # Enable cadence pipeline
-cadence_enabled: false
+cadence_enabled: true
 
 # Vault path inside VM (mounted from host)
 cadence_vault_path: "/workspace-obsidian"
@@ -16,7 +16,7 @@ cadence_telegram_chat_id: ""
 
 # LLM settings
 cadence_llm_provider: "anthropic"
-cadence_llm_model: "claude-3-5-haiku-latest"
+cadence_llm_model: "claude-haiku-4-5-20251001"
 
 # Schedule settings
 cadence_schedule_enabled: true

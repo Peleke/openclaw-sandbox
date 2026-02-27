@@ -70,6 +70,61 @@
   ansible.builtin.set_fact:
     cadence_current: "{{ existing_cadence_config.content | b64decode | from_json }}"
 
+- name: Ensure enabled state matches role config
+  when: >
+    cadence_config.stat.exists and
+    cadence_current.enabled | default(false) != cadence_enabled | bool
+  block:
+    - name: Update enabled flag in config
+      ansible.builtin.set_fact:
+        cadence_updated_enabled: >-
+          {{ cadence_current | combine({'enabled': cadence_enabled | bool}) }}
+
+    - name: Write updated cadence.json
+      ansible.builtin.copy:
+        content: "{{ cadence_updated_enabled | to_nice_json }}"
+        dest: "{{ user_home }}/.openclaw/cadence.json"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0640"
+      register: cadence_enabled_update
+
+    - name: Re-read config after enable update
+      ansible.builtin.slurp:
+        src: "{{ user_home }}/.openclaw/cadence.json"
+      register: existing_cadence_config
+
+    - name: Re-parse config
+      ansible.builtin.set_fact:
+        cadence_current: "{{ existing_cadence_config.content | b64decode | from_json }}"
+
+- name: Ensure LLM model matches role config
+  when: >
+    cadence_config.stat.exists and
+    cadence_current.llm.model | default('') != cadence_llm_model
+  block:
+    - name: Update LLM model in config
+      ansible.builtin.set_fact:
+        cadence_updated_model: >-
+          {{ cadence_current | combine({'llm': cadence_current.llm | combine({'model': cadence_llm_model})}) }}
+
+    - name: Write updated cadence.json
+      ansible.builtin.copy:
+        content: "{{ cadence_updated_model | to_nice_json }}"
+        dest: "{{ user_home }}/.openclaw/cadence.json"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0640"
+
+    - name: Re-read config after model update
+      ansible.builtin.slurp:
+        src: "{{ user_home }}/.openclaw/cadence.json"
+      register: existing_cadence_config
+
+    - name: Re-parse config
+      ansible.builtin.set_fact:
+        cadence_current: "{{ existing_cadence_config.content | b64decode | from_json }}"
+
 - name: Fix vault path if pointing to macOS location
   when: >
     cadence_config.stat.exists and
