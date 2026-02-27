@@ -125,11 +125,10 @@
       ansible.builtin.set_fact:
         cadence_current: "{{ existing_cadence_config.content | b64decode | from_json }}"
 
-- name: Fix vault path if pointing to macOS location
+- name: Sync vault path to role config
   when: >
     cadence_config.stat.exists and
-    cadence_current.vaultPath is defined and
-    '/Users/' in cadence_current.vaultPath
+    cadence_current.vaultPath | default('') != cadence_vault_path
   block:
     - name: Update vault path in config
       ansible.builtin.set_fact:

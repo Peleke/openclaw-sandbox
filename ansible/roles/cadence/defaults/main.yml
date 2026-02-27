@@ -5,8 +5,9 @@
 # Enable cadence pipeline
 cadence_enabled: true
 
-# Vault path inside VM (mounted from host)
-cadence_vault_path: "/workspace-obsidian"
+# Vault path inside VM — uses overlay upper dir so chokidar sees
+# writes from sandbox containers (which mount the upper dir directly)
+cadence_vault_path: "{{ overlay_upper_base | default('/var/lib/openclaw/overlay') }}/obsidian/upper"
 
 # Delivery channel: telegram, discord, log
 cadence_delivery_channel: "telegram"

@@ -23,6 +23,7 @@
         name:
           - inotify-tools
           - attr
+          - acl
         state: present
         update_cache: true
 
@@ -104,6 +105,12 @@
             group: "{{ ansible_user }}"
             mode: "0777"
           loop: "{{ overlay_obsidian_upper_dirs | default([]) }}"
+
+        - name: Set default ACL for world-writable new files in obsidian upper dirs
+          ansible.builtin.command:
+            cmd: "setfacl -d -m o::rw -m g::rw {{ overlay_upper_base }}/obsidian/upper/{{ item }}"
+          loop: "{{ overlay_obsidian_upper_dirs | default([]) }}"
+          changed_when: true
 
         - name: Check opaque xattr on pre-created obsidian dirs
           ansible.builtin.command:
