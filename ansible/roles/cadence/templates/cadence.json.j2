@@ -26,5 +26,11 @@
     "nightlyDigest": "{{ cadence_nightly_digest }}",
     "morningStandup": "{{ cadence_morning_standup }}",
     "timezone": "{{ cadence_timezone }}"
-  }
+  }{% if cadence_runlist_enabled | default(false) | bool %},
+  "runlist": {
+    "enabled": {{ cadence_runlist_enabled | to_json }},
+    "morningTime": "{{ cadence_runlist_morning_time | default('07:30') }}",
+    "nightlyTime": "{{ cadence_runlist_nightly_time | default('22:00') }}",
+    "runlistDir": "{{ cadence_runlist_dir | default('Runlist') }}"
+  }{% endif %}
 }

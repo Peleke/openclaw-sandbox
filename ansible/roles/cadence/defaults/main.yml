@@ -25,6 +25,12 @@ cadence_nightly_digest: "21:00"
 cadence_morning_standup: "08:00"
 cadence_timezone: "America/New_York"
 
+# Runlist responder settings (morning ping + nightly recap)
+cadence_runlist_enabled: false
+cadence_runlist_morning_time: "07:30"
+cadence_runlist_nightly_time: "22:00"
+cadence_runlist_dir: "Runlist"
+
 # Content pillars
 cadence_pillars:
   - id: "tech"
