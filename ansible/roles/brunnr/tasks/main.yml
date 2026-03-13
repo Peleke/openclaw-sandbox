@@ -1,0 +1,53 @@
+---
+# Brunnr — skill scanner and marketplace CLI
+#
+# Installs brunnr via uv (already available from buildlog role).
+# Agent can then run: brunnr install <skill> --target ~/.openclaw/skills-extra
+
+- name: Check if uv is installed
+  become: false
+  ansible.builtin.command: "{{ user_home }}/.local/bin/uv --version"
+  register: uv_check
+  changed_when: false
+  failed_when: false
+
+- name: Skip brunnr if uv not available
+  when: uv_check.rc != 0
+  ansible.builtin.debug:
+    msg: "uv not installed — skipping brunnr (buildlog role should run first)"
+
+- name: Check if brunnr is installed
+  become: false
+  when: uv_check.rc == 0
+  ansible.builtin.command: "{{ user_home }}/.local/bin/brunnr --version"
+  register: brunnr_check
+  changed_when: false
+  failed_when: false
+
+- name: Install brunnr via uv
+  become: false
+  when:
+    - uv_check.rc == 0
+    - brunnr_check.rc != 0
+  ansible.builtin.shell: |
+    {{ user_home }}/.local/bin/uv tool install brunnr{% if brunnr_version %} --version {{ brunnr_version }}{% endif %}
+  environment:
+    HOME: "{{ user_home }}"
+  register: brunnr_install
+
+- name: Display brunnr install result
+  when: brunnr_install is defined and brunnr_install.changed
+  ansible.builtin.debug:
+    msg: "{{ brunnr_install.stdout | default('brunnr installed') }}"
+
+- name: Verify brunnr installation
+  become: false
+  when: uv_check.rc == 0
+  ansible.builtin.command: "{{ user_home }}/.local/bin/brunnr --version"
+  register: brunnr_version_result
+  changed_when: false
+
+- name: Display brunnr version
+  when: brunnr_version_result is defined and brunnr_version_result.rc == 0
+  ansible.builtin.debug:
+    msg: "brunnr version: {{ brunnr_version_result.stdout }}"

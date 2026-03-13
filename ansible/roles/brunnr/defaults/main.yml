@@ -1,0 +1,6 @@
+---
+# Brunnr Role Defaults
+# Skill scanner and marketplace CLI for Claude Code
+
+brunnr_enabled: true
+brunnr_version: ""  # Empty = latest
