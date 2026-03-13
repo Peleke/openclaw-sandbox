@@ -92,6 +92,11 @@
     - role: buildlog
       tags: [buildlog]
 
+    # Brunnr skill scanner + marketplace (after buildlog — needs uv)
+    - role: brunnr
+      tags: [brunnr]
+      when: brunnr_enabled | default(true) | bool
+
     # Qortex interop (after buildlog — writes into ~/.buildlog)
     - role: qortex
       tags: [qortex]
