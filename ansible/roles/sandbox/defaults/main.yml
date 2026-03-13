@@ -54,9 +54,12 @@ sandbox_network_docker_network: "bridge"
 sandbox_setup_script: "scripts/sandbox-setup.sh"
 
 # Obsidian vault bind mount for sandbox containers
-# sandbox_vault_path  = host-side path (where overlay is on VM filesystem)
+# sandbox_vault_path  = host-side path (overlay upper dir, not merged mount)
+#   Using the upper dir directly because sandbox containers have zero capabilities —
+#   overlayfs denies file creation without CAP_DAC_OVERRIDE even on 0777 dirs.
+#   Writes to upper dir are visible on the merged overlay at /workspace-obsidian.
 # sandbox_vault_mount = container-side path (where Docker mounts it inside the sandbox)
-sandbox_vault_path: "/workspace-obsidian"
+sandbox_vault_path: "{{ overlay_upper_base | default('/var/lib/openclaw/overlay') }}/obsidian/upper"
 sandbox_vault_mount: "/workspace/obsidian"
 sandbox_vault_access: "rw"
 

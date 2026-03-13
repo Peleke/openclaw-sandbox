@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# Sync host vault changes (virtiofs lower) into overlay merged mount.
+# Overlayfs inotify only fires for writes through the overlay — not for
+# lower-layer changes. This rsync bridges host Obsidian edits to chokidar.
+
+[Unit]
+Description=Vault sync (host → overlay)
+After=workspace\x2dobsidian.mount
+Requires=workspace\x2dobsidian.mount
+
+[Service]
+Type=oneshot
+User={{ ansible_user }}
+ExecStart=/usr/bin/rsync -rlt --exclude=".obsidian/" {{ overlay_lower_obsidian }}/ {{ overlay_obsidian_path }}/
+StandardOutput=journal
+StandardError=journal

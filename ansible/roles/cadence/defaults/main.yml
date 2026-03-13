@@ -3,10 +3,11 @@
 # Ambient AI pipeline for journal → insight → delivery
 
 # Enable cadence pipeline
-cadence_enabled: false
+cadence_enabled: true
 
-# Vault path inside VM (mounted from host)
-cadence_vault_path: "/workspace-obsidian"
+# Vault path inside VM — uses overlay upper dir so chokidar sees
+# writes from sandbox containers (which mount the upper dir directly)
+cadence_vault_path: "{{ overlay_upper_base | default('/var/lib/openclaw/overlay') }}/obsidian/upper"
 
 # Delivery channel: telegram, discord, log
 cadence_delivery_channel: "telegram"
@@ -16,13 +17,19 @@ cadence_telegram_chat_id: ""
 
 # LLM settings
 cadence_llm_provider: "anthropic"
-cadence_llm_model: "claude-3-5-haiku-latest"
+cadence_llm_model: "claude-haiku-4-5-20251001"
 
 # Schedule settings
 cadence_schedule_enabled: true
 cadence_nightly_digest: "21:00"
 cadence_morning_standup: "08:00"
 cadence_timezone: "America/New_York"
+
+# Runlist responder settings (morning ping + nightly recap)
+cadence_runlist_enabled: false
+cadence_runlist_morning_time: "07:30"
+cadence_runlist_nightly_time: "22:00"
+cadence_runlist_dir: "Runlist"
 
 # Content pillars
 cadence_pillars:
