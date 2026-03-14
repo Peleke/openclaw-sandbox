@@ -32,5 +32,13 @@
     "morningTime": "{{ cadence_runlist_morning_time | default('07:30') }}",
     "nightlyTime": "{{ cadence_runlist_nightly_time | default('22:00') }}",
     "runlistDir": "{{ cadence_runlist_dir | default('Runlist') }}"
+  }{% endif %}{% if cadence_github_watcher_enabled | default(false) | bool %},
+  "githubWatcher": {
+    "enabled": true,
+    "owner": "{{ cadence_github_watcher_owner | default('Peleke') }}",
+    "scanTime": "{{ cadence_github_watcher_scan_time | default('21:00') }}",
+    "outputDir": "{{ cadence_github_watcher_output_dir | default('Buildlog') }}",
+    "maxBuildlogEntries": {{ cadence_github_watcher_max_buildlog_entries | default(3) }},
+    "excludeRepos": {{ cadence_github_watcher_exclude_repos | default([]) | to_json }}
   }{% endif %}
 }
