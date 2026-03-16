@@ -378,6 +378,43 @@
         group: "{{ ansible_user }}"
         mode: "0755"
 
+    # Rewrite ALL macOS paths across ~/.openclaw/ — not just openclaw.json.
+    # Config files copied from the host mount embed macOS-specific paths
+    # (sessions.json, skills-extra, agent session data, etc.) that break
+    # when the gateway tries to mkdir /Users/... inside the Linux VM.
+    # Detects macOS home from /Users/* patterns in any file and rewrites
+    # to the VM user's home directory.
+    - name: Detect macOS home paths in config files
+      ansible.builtin.shell: |
+        grep -roh '/Users/[^/"'\'' ]*' "{{ user_home }}/.openclaw/" 2>/dev/null \
+          | sort -u | head -1
+      register: macos_home_detect
+      changed_when: false
+      failed_when: false
+
+    - name: Rewrite macOS paths to VM paths across all config files
+      when: macos_home_detect.stdout | default('') | length > 0
+      ansible.builtin.shell: |
+        MACOS_HOME="{{ macos_home_detect.stdout | trim }}"
+        VM_HOME="{{ user_home }}"
+        find "{{ user_home }}/.openclaw/" \
+          -type f \( -name '*.json' -o -name '*.jsonl' -o -name '*.md' -o -name '*.env' -o -name '*.sh' \) \
+          -exec grep -l "$MACOS_HOME" {} + 2>/dev/null \
+          | while read -r file; do
+              sed -i "s|${MACOS_HOME}/.openclaw|${VM_HOME}/.openclaw|g" "$file"
+              sed -i "s|${MACOS_HOME}/Documents/Projects/openclaw|/workspace|g" "$file"
+              sed -i "s|${MACOS_HOME}/Library/Mobile Documents/iCloud~md~obsidian/Documents/[^\"']*|/workspace-obsidian|g" "$file"
+              sed -i "s|${MACOS_HOME}|${VM_HOME}|g" "$file"
+            done
+        echo "Rewrote macOS paths: ${MACOS_HOME} → ${VM_HOME}"
+      register: path_rewrite_result
+      changed_when: path_rewrite_result.rc == 0
+
+    - name: Fix ownership after path rewrite
+      ansible.builtin.shell: |
+        chown -R "{{ ansible_user }}:{{ ansible_user }}" "{{ user_home }}/.openclaw/"
+      changed_when: false
+
     - name: Display path fixes applied
       ansible.builtin.debug:
         msg: |
