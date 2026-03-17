@@ -382,33 +382,60 @@
     # Config files copied from the host mount embed macOS-specific paths
     # (sessions.json, skills-extra, agent session data, etc.) that break
     # when the gateway tries to mkdir /Users/... inside the Linux VM.
-    # Detects macOS home from /Users/* patterns in any file and rewrites
-    # to the VM user's home directory.
-    - name: Detect macOS home paths in config files
+    #
+    # Handles: multiple macOS users, symlinked agent data, JSONL session
+    # transcripts, and escaped slashes in JSON strings.
+    - name: Detect all macOS home paths in config files
       ansible.builtin.shell: |
-        grep -roh '/Users/[^/"'\'' ]*' "{{ user_home }}/.openclaw/" 2>/dev/null \
-          | sort -u | head -1
+        grep -rLoh '/Users/[^/"'"'"' ]*' "{{ user_home }}/.openclaw/" 2>/dev/null \
+          | sort -u || true
       register: macos_home_detect
       changed_when: false
       failed_when: false
 
     - name: Rewrite macOS paths to VM paths across all config files
-      when: macos_home_detect.stdout | default('') | length > 0
+      when: macos_home_detect.stdout_lines | default([]) | length > 0
       ansible.builtin.shell: |
-        MACOS_HOME="{{ macos_home_detect.stdout | trim }}"
+        set -euo pipefail
         VM_HOME="{{ user_home }}"
-        find "{{ user_home }}/.openclaw/" \
-          -type f \( -name '*.json' -o -name '*.jsonl' -o -name '*.md' -o -name '*.env' -o -name '*.sh' \) \
-          -exec grep -l "$MACOS_HOME" {} + 2>/dev/null \
-          | while read -r file; do
-              sed -i "s|${MACOS_HOME}/.openclaw|${VM_HOME}/.openclaw|g" "$file"
-              sed -i "s|${MACOS_HOME}/Documents/Projects/openclaw|/workspace|g" "$file"
-              sed -i "s|${MACOS_HOME}/Library/Mobile Documents/iCloud~md~obsidian/Documents/[^\"']*|/workspace-obsidian|g" "$file"
-              sed -i "s|${MACOS_HOME}|${VM_HOME}|g" "$file"
-            done
-        echo "Rewrote macOS paths: ${MACOS_HOME} → ${VM_HOME}"
+
+        for MACOS_HOME in {{ macos_home_detect.stdout_lines | join(' ') }}; do
+          # Follow symlinks (-L) so agent data mount is covered
+          find -L "{{ user_home }}/.openclaw/" \
+            -type f \( -name '*.json' -o -name '*.jsonl' -o -name '*.md' -o -name '*.env' -o -name '*.sh' \) \
+            -exec grep -l "$MACOS_HOME" {} + 2>/dev/null \
+            | while read -r file; do
+                # Order matters: most specific patterns first
+                sed -i "s|${MACOS_HOME}/.openclaw|${VM_HOME}/.openclaw|g" "$file"
+                sed -i "s|${MACOS_HOME}/Documents/Projects/openclaw|/workspace|g" "$file"
+                sed -i "s|${MACOS_HOME}/Library/Mobile Documents/iCloud~md~obsidian/Documents/[^\"']*|/workspace-obsidian|g" "$file"
+                # Handle escaped slashes in JSON strings (\/Users\/...)
+                MACOS_ESC=$(echo "$MACOS_HOME" | sed 's|/|\\/|g')
+                VM_ESC=$(echo "$VM_HOME" | sed 's|/|\\/|g')
+                sed -i "s|${MACOS_ESC}|${VM_ESC}|g" "$file"
+                # Catch-all for remaining unescaped paths
+                sed -i "s|${MACOS_HOME}|${VM_HOME}|g" "$file"
+              done
+          echo "Rewrote: ${MACOS_HOME} → ${VM_HOME}"
+        done
       register: path_rewrite_result
       changed_when: path_rewrite_result.rc == 0
+
+    - name: Verify no macOS paths remain
+      ansible.builtin.shell: |
+        REMAINING=$(grep -rl '/Users/' "{{ user_home }}/.openclaw/" 2>/dev/null || true)
+        if [ -n "$REMAINING" ]; then
+          echo "WARNING: macOS paths still in: $REMAINING" >&2
+        fi
+        echo "${REMAINING}"
+      register: path_verify
+      changed_when: false
+      failed_when: false
+
+    - name: Warn if macOS paths survived rewrite
+      when: path_verify.stdout | default('') | trim | length > 0
+      ansible.builtin.debug:
+        msg: "⚠️  macOS paths still found after rewrite: {{ path_verify.stdout_lines | join(', ') }}"
 
     - name: Fix ownership after path rewrite
       ansible.builtin.shell: |
