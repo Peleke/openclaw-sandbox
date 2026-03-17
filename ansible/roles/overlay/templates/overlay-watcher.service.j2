@@ -9,6 +9,7 @@ Requires=workspace.mount
 
 [Service]
 Type=simple
+User={{ ansible_user }}
 ExecStart=/usr/bin/inotifywait -m -r --timefmt '%%Y-%%m-%%dT%%H:%%M:%%S' --format '%%T %%w%%f %%e' -e create -e modify -e delete -e move {{ overlay_upper_base }}/openclaw/upper
 StandardOutput=append:{{ overlay_watcher_log }}
 StandardError=journal

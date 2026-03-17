@@ -40,18 +40,24 @@
       ansible.builtin.file:
         path: "{{ overlay_work_base }}/openclaw"
         state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
         mode: "0755"
 
     - name: Create merged mount point
       ansible.builtin.file:
         path: "{{ overlay_workspace_path }}"
         state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
         mode: "0755"
 
     - name: Create log directory
       ansible.builtin.file:
         path: /var/log/openclaw
         state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
         mode: "0755"
 
     # Deploy systemd mount unit for /workspace
@@ -81,12 +87,16 @@
           ansible.builtin.file:
             path: "{{ overlay_work_base }}/obsidian"
             state: directory
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
             mode: "0755"
 
         - name: Create obsidian merged mount point
           ansible.builtin.file:
             path: "{{ overlay_obsidian_path }}"
             state: directory
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
             mode: "0755"
 
         - name: Fix obsidian overlay upper directory ownership
@@ -178,6 +188,15 @@
         enabled: true
         state: started
         daemon_reload: true
+
+    # Fix ownership of workspace overlay upper directory.
+    # Prior provisions run as root (become: true) and leave root-owned
+    # files in the upper dir. The gateway runs as unprivileged user.
+    - name: Fix workspace overlay upper file ownership
+      ansible.builtin.shell: |
+        chown -R "{{ ansible_user }}:{{ ansible_user }}" "{{ overlay_upper_base }}/openclaw/upper/" 2>/dev/null || true
+      changed_when: false
+      failed_when: false
 
     # Detect stale overlay (ESTALE from previous provision/reboot)
     - name: Probe workspace overlay for stale handle
