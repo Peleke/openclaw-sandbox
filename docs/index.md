@@ -1,5 +1,8 @@
 # Bilrost
 
+> **Package:** `bilrost` on [PyPI](https://pypi.org/project/bilrost/) · **Repo:** `openclaw-sandbox` on GitHub
+
+
 <p style="font-style: italic; color: #888; margin-bottom: 0.5em;">
   Part of the <strong>qlawbox</strong> stack
   &nbsp;·&nbsp; <a href="https://peleke.github.io/openclaw/">vindler</a>
