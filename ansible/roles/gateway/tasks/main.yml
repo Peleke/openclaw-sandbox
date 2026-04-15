@@ -179,6 +179,26 @@
     state: link
     force: true
 
+# Rewrite macOS paths in agent data mount (persistent session files
+# may contain /Users/... paths from the host). Only needed when the
+# agent data is symlinked from a host mount, not ephemeral.
+- name: Rewrite macOS paths in agent data mount
+  when: agent_data_mount_check.stat.exists | default(false)
+  ansible.builtin.shell: |
+    MACOS_HOMES=$(grep -roh '/Users/[^/"'"'"' ]*' "{{ agent_data_mount }}/" 2>/dev/null | sort -u || true)
+    VM_HOME="{{ user_home }}"
+    for MACOS_HOME in $MACOS_HOMES; do
+      find "{{ agent_data_mount }}/" \
+        -type f \( -name '*.json' -o -name '*.jsonl' \) \
+        -exec grep -l "$MACOS_HOME" {} + 2>/dev/null \
+        | while read -r file; do
+            sed -i "s|${MACOS_HOME}/.openclaw|${VM_HOME}/.openclaw|g" "$file"
+            sed -i "s|${MACOS_HOME}|${VM_HOME}|g" "$file"
+          done
+    done
+  changed_when: false
+  failed_when: false
+
 - name: Display config status
   ansible.builtin.debug:
     msg: >-
@@ -407,6 +427,7 @@
       {% endif %}
       WorkingDirectory={{ workspace_path }}
       Environment=HOME={{ user_home }}
+      Environment=OPENCLAW_HOME_DIR={{ user_home }}
       Environment=PATH={{ user_home }}/.local/bin:{{ user_home }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
       Environment=OPENCLAW_BUNDLED_PLUGINS_DIR={{ workspace_path }}/extensions
       {% if obsidian_vault_mount.stat.exists %}
@@ -435,6 +456,14 @@
   notify:
     - Reload systemd
     - Restart gateway after unit change
+
+# Final ownership sweep — catches any root-owned files created during
+# config manipulation, bun install, path rewrite, or prior provisions.
+- name: Final ownership sweep of ~/.openclaw/
+  ansible.builtin.shell: |
+    chown -R "{{ ansible_user }}:{{ ansible_user }}" "{{ user_home }}/.openclaw/" 2>/dev/null || true
+  changed_when: false
+  failed_when: false
 
 - name: Enable gateway service
   become: true

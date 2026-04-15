@@ -9,6 +9,7 @@ Requires=workspace.mount
 
 [Service]
 Type=oneshot
+User={{ ansible_user }}
 ExecStart=/usr/bin/rsync -av --delete {{ overlay_upper_base }}/openclaw/upper/ {{ overlay_lower_openclaw }}/
 StandardOutput=journal
 StandardError=journal

@@ -40,18 +40,24 @@
       ansible.builtin.file:
         path: "{{ overlay_work_base }}/openclaw"
         state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
         mode: "0755"
 
     - name: Create merged mount point
       ansible.builtin.file:
         path: "{{ overlay_workspace_path }}"
         state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
         mode: "0755"
 
     - name: Create log directory
       ansible.builtin.file:
         path: /var/log/openclaw
         state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
         mode: "0755"
 
     # Deploy systemd mount unit for /workspace
@@ -81,12 +87,16 @@
           ansible.builtin.file:
             path: "{{ overlay_work_base }}/obsidian"
             state: directory
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
             mode: "0755"
 
         - name: Create obsidian merged mount point
           ansible.builtin.file:
             path: "{{ overlay_obsidian_path }}"
             state: directory
+            owner: "{{ ansible_user }}"
+            group: "{{ ansible_user }}"
             mode: "0755"
 
         - name: Fix obsidian overlay upper directory ownership
@@ -179,6 +189,15 @@
         state: started
         daemon_reload: true
 
+    # Fix ownership of workspace overlay upper directory.
+    # Prior provisions run as root (become: true) and leave root-owned
+    # files in the upper dir. The gateway runs as unprivileged user.
+    - name: Fix workspace overlay upper file ownership
+      ansible.builtin.include_tasks: fix-overlay-ownership.yml
+      vars:
+        overlay_fix_dir: "{{ overlay_upper_base }}/openclaw/upper"
+        overlay_fix_user: "{{ ansible_user }}"
+
     # Detect stale overlay (ESTALE from previous provision/reboot)
     - name: Probe workspace overlay for stale handle
       ansible.builtin.command: stat {{ overlay_workspace_path }}
@@ -207,22 +226,17 @@
     # entire gateway process (including Telegram).
     - name: Fix obsidian overlay upper file ownership
       when: obsidian_mount_check.stat.exists
-      ansible.builtin.shell: |
-        chown -R "{{ ansible_user }}:{{ ansible_user }}" "{{ overlay_upper_base }}/obsidian/upper/" 2>/dev/null
-        find "{{ overlay_upper_base }}/obsidian/upper/" -type f -exec chmod 644 {} + 2>/dev/null
-        find "{{ overlay_upper_base }}/obsidian/upper/" -type d -exec chmod 755 {} + 2>/dev/null
-        echo "Fixed obsidian upper dir ownership"
-      register: obsidian_ownership_fix
-      changed_when: true
-      failed_when: false
+      ansible.builtin.include_tasks: fix-overlay-ownership.yml
+      vars:
+        overlay_fix_dir: "{{ overlay_upper_base }}/obsidian/upper"
+        overlay_fix_user: "{{ ansible_user }}"
 
-    # Also fix ownership on the merged mount (catches stale root-owned dentries)
     - name: Fix obsidian merged mount file ownership
       when: obsidian_mount_check.stat.exists
-      ansible.builtin.shell: |
-        chown -R "{{ ansible_user }}:{{ ansible_user }}" "{{ overlay_obsidian_path }}/" 2>/dev/null || true
-      changed_when: false
-      failed_when: false
+      ansible.builtin.include_tasks: fix-overlay-ownership.yml
+      vars:
+        overlay_fix_dir: "{{ overlay_obsidian_path }}"
+        overlay_fix_user: "{{ ansible_user }}"
 
     # Vault sync: bridge host Obsidian edits into overlay for inotify
     - name: Deploy vault-sync service and timer (if vault mounted)

@@ -1,0 +1,16 @@
+---
+# Reusable task: fix ownership of an overlay upper directory.
+# Ensures all files/dirs are owned by the unprivileged user with
+# sane permissions (644 files, 755 dirs).
+#
+# Required vars:
+#   overlay_fix_dir: path to the upper directory
+#   overlay_fix_user: target user:group
+
+- name: "Fix overlay ownership: {{ overlay_fix_dir }}"
+  ansible.builtin.shell: |
+    chown -R "{{ overlay_fix_user }}:{{ overlay_fix_user }}" "{{ overlay_fix_dir }}/" 2>/dev/null
+    find "{{ overlay_fix_dir }}/" -type f -exec chmod 644 {} + 2>/dev/null
+    find "{{ overlay_fix_dir }}/" -type d -exec chmod 755 {} + 2>/dev/null
+  changed_when: false
+  failed_when: false
