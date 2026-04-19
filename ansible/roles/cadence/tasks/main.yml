@@ -203,46 +203,79 @@
       Cadence LLM extraction will not work without it.
       Add your API key to the secrets file on the host.
 
-# Create systemd service for persistent cadence
-- name: Create cadence systemd service
-  become: true
-  ansible.builtin.copy:
-    dest: /etc/systemd/system/openclaw-cadence.service
-    mode: "0644"
-    content: |
-      [Unit]
-      Description=OpenClaw Cadence Pipeline
-      After=network.target openclaw-gateway.service{% if overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool) %} workspace.mount{% endif %}
+# Enable cadence in the gateway's OpenClaw config (config.json).
+# The gateway (openclaw-gateway) is the canonical cadence runner.
+# Do NOT use the dogfood script (scripts/cadence.ts) in production.
+- name: Check if OpenClaw config exists
+  ansible.builtin.stat:
+    path: "{{ user_home }}/.openclaw/openclaw.json"
+  register: openclaw_config_stat
 
-      Wants=openclaw-gateway.service
-      {% if overlay_enabled | default(true) | bool and not (overlay_yolo_unsafe | default(false) | bool) %}
-      Requires=workspace.mount
-      {% endif %}
+- name: Read existing OpenClaw config
+  when: openclaw_config_stat.stat.exists
+  ansible.builtin.slurp:
+    src: "{{ user_home }}/.openclaw/openclaw.json"
+  register: openclaw_config_raw
 
-      [Service]
-      Type=simple
-      User={{ ansible_user }}
-      WorkingDirectory={{ workspace_path }}
-      Environment=HOME={{ user_home }}
-      Environment=PATH={{ user_home }}/.bun/bin:/usr/local/bin:/usr/bin:/bin
-      # Load secrets for LLM API access
-      EnvironmentFile=-/etc/openclaw/secrets.env
-      ExecStart={{ user_home }}/.bun/bin/bun {{ workspace_path }}/scripts/cadence.ts start
-      Restart=on-failure
-      RestartSec=10
+- name: Parse OpenClaw config
+  when: openclaw_config_stat.stat.exists
+  ansible.builtin.set_fact:
+    openclaw_config: "{{ openclaw_config_raw.content | b64decode | from_json }}"
 
-      [Install]
-      WantedBy=multi-user.target
-  notify: Reload systemd
+- name: Add cadence section to OpenClaw config
+  when: >
+    openclaw_config_stat.stat.exists and
+    (openclaw_config.cadence is not defined or
+     openclaw_config.cadence.enabled | default(false) != true or
+     openclaw_config.cadence.vaultPath | default('') != cadence_vault_path)
+  block:
+    - name: Merge cadence config into OpenClaw config
+      ansible.builtin.set_fact:
+        openclaw_config_updated: >-
+          {{ openclaw_config | combine({
+            'cadence': {
+              'enabled': true,
+              'vaultPath': cadence_vault_path,
+              'timezone': cadence_timezone
+            }
+          }) }}
 
-- name: Enable cadence service
+    - name: Write updated OpenClaw config
+      ansible.builtin.copy:
+        content: "{{ openclaw_config_updated | to_nice_json }}"
+        dest: "{{ user_home }}/.openclaw/openclaw.json"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: "0640"
+
+    - name: Display cadence gateway config update
+      ansible.builtin.debug:
+        msg: "Enabled cadence in gateway config: vaultPath={{ cadence_vault_path }}"
+
+# Remove the legacy dogfood service if it exists.
+# Cadence now runs inside the gateway process.
+- name: Stop legacy cadence dogfood service
   become: true
   ansible.builtin.systemd:
     name: openclaw-cadence
-    enabled: true
-    daemon_reload: true
+    state: stopped
+  failed_when: false
 
-# Only start if enabled and prerequisites met
+- name: Disable legacy cadence dogfood service
+  become: true
+  ansible.builtin.systemd:
+    name: openclaw-cadence
+    enabled: false
+  failed_when: false
+
+- name: Remove legacy cadence dogfood service unit
+  become: true
+  ansible.builtin.file:
+    path: /etc/systemd/system/openclaw-cadence.service
+    state: absent
+  notify: Reload systemd
+
+# Restart gateway to pick up cadence config
 - name: Check cadence config state
   ansible.builtin.slurp:
     src: "{{ user_home }}/.openclaw/cadence.json"
@@ -259,12 +292,12 @@
          cadence_final.vaultPath | default('') | length > 0 and
          vault_mount.stat.exists }}
 
-- name: Start cadence service (if ready)
+- name: Restart gateway to pick up cadence config
   become: true
   when: cadence_ready
   ansible.builtin.systemd:
-    name: openclaw-cadence
-    state: started
+    name: openclaw-gateway
+    state: restarted
 
 - name: Cadence not started (needs config)
   when: not cadence_ready

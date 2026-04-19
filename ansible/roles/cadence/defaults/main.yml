@@ -5,9 +5,10 @@
 # Enable cadence pipeline
 cadence_enabled: true
 
-# Vault path inside VM — uses overlay upper dir so chokidar sees
-# writes from sandbox containers (which mount the upper dir directly)
-cadence_vault_path: "{{ overlay_upper_base | default('/var/lib/openclaw/overlay') }}/obsidian/upper"
+# Vault path inside VM — must point to the merged overlay mount so
+# chokidar (inotify) sees file changes. Writing to the raw upper dir
+# bypasses inotify on the merged mount and cadence never sees changes.
+cadence_vault_path: "{{ overlay_obsidian_path | default('/workspace-obsidian') }}"
 
 # Delivery channel: telegram, discord, log
 cadence_delivery_channel: "telegram"
@@ -30,6 +31,14 @@ cadence_runlist_enabled: false
 cadence_runlist_morning_time: "07:30"
 cadence_runlist_nightly_time: "22:00"
 cadence_runlist_dir: "Runlist"
+
+# GitHub Watcher (nightly repo scan + LLM synthesis → ::linkedin vault notes)
+cadence_github_watcher_enabled: false
+cadence_github_watcher_owner: "Peleke"
+cadence_github_watcher_scan_time: "21:00"
+cadence_github_watcher_output_dir: "Buildlog"
+cadence_github_watcher_max_buildlog_entries: 3
+cadence_github_watcher_exclude_repos: []
 
 # Content pillars
 cadence_pillars:
