@@ -5,6 +5,16 @@ All notable changes to Bilrost (formerly openclaw-sandbox) are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-11-07
+
+### Added
+
+- MIT LICENSE file at the repository root.
+
+### Fixed
+
+- `cli/pyproject.toml` version now matches the release tag, so PyPI receives the release.
+
 ## [1.3.1] - 2026-02-26
 
 ### Changed
