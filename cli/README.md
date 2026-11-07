@@ -1,6 +1,8 @@
 # bilrost
 
-**Hardened Lima VM for running AI agents** — overlay isolation, network containment, secrets management, and gated sync.
+**Harness isolation for AI agents, in a Lima VM** — overlay isolation, network containment, secrets management, and gated sync.
+
+> **Status: deprecated.** Bilrost is no longer in active use and remains available as a research artifact. It provides harness isolation for experiments and is not a hardened security product. Releases are not signed with PyPI attestations, and CI is maintained on a best-effort basis.
 
 ## Install
 

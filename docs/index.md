@@ -1,5 +1,7 @@
 # Bilrost
 
+> **Status: deprecated.** Bilrost is no longer in active use and remains available as a research artifact. It provides harness isolation for experiments and is not a hardened security product. Releases are not signed with PyPI attestations, and CI is maintained on a best-effort basis.
+
 > **Package:** `bilrost` on [PyPI](https://pypi.org/project/bilrost/) · **Repo:** `openclaw-sandbox` on GitHub
 
 
@@ -27,7 +29,7 @@ You need a boundary between "what the agent can touch" and "everything else on y
 
 ## The Solution
 
-Bilrost runs your agents inside a **hardened Linux VM** (Ubuntu 24.04 on Lima) with strict network policies, layered filesystem isolation, and secure secrets handling. Everything provisions from a single command on macOS.
+Bilrost runs your agents inside a **Linux VM** (Ubuntu 24.04 on Lima) with strict network policies, layered filesystem isolation, and secure secrets handling. Everything provisions from a single command on macOS.
 
 <div style="max-width: 520px; margin: 1.5em auto;">
 <svg viewBox="0 0 480 380" style="width: 100%; height: auto;" xmlns="http://www.w3.org/2000/svg" aria-label="Bilrost architecture: macOS host, Lima VM, OverlayFS, Docker sandbox">
@@ -206,7 +208,7 @@ Bilrost is the isolation layer. The full stack:
 | Component | Role | Docs |
 |-----------|------|------|
 | **[vindler](https://peleke.github.io/openclaw/)** | Agent runtime (OpenClaw fork) | [Docs](https://peleke.github.io/openclaw/) |
-| **bilrost** | Hardened VM isolation (this project) | [PyPI](https://pypi.org/project/bilrost/) |
+| **bilrost** | Harness isolation in a VM (this project) | [PyPI](https://pypi.org/project/bilrost/) |
 | **[qortex](https://peleke.github.io/qortex/)** | Knowledge graph with adaptive learning | [PyPI](https://pypi.org/project/qortex/) |
 
 ## License

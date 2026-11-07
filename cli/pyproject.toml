@@ -5,14 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "bilrost"
 version = "1.3.2"
-description = "Hardened Lima VM for running AI agents — overlay isolation, network containment, secrets management, and gated sync."
+description = "Harness isolation for AI agents, in a Lima VM — overlay isolation, network containment, secrets management, and gated sync."
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [{ name = "Peleke Sengstacke" }]
 keywords = ["sandbox", "ai-agents", "lima", "vm", "security", "isolation"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 7 - Inactive",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",

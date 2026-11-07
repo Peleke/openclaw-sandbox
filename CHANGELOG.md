@@ -11,9 +11,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - MIT LICENSE file at the repository root.
 
+### Changed
+
+- Marked the project deprecated; it remains available as a research artifact.
+- Replaced "hardened" wording with "harness isolation".
+- Turned off PyPI attestations.
+
 ### Fixed
 
 - `cli/pyproject.toml` version now matches the release tag, so PyPI receives the release.
+- Updated the Cadence validation test to match the role's vault path sync.
 
 ## [1.3.1] - 2026-02-26
 

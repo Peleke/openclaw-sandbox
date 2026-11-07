@@ -180,11 +180,11 @@ else
   log_info "Tasks don't use handlers (may be intentional)"
 fi
 
-# Test: macOS path fix logic exists
-if grep -q "/Users/" "$TASKS_FILE"; then
-  log_pass "Tasks handle macOS path conversion"
+# Test: vault path is corrected in the deployed config
+if grep -q "Sync vault path to role config" "$TASKS_FILE"; then
+  log_pass "Tasks sync the vault path into config"
 else
-  log_fail "Tasks missing macOS path fix logic"
+  log_fail "Tasks missing vault path sync"
 fi
 
 # Test: Prerequisite checks exist

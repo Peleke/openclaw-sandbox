@@ -2,13 +2,13 @@
 
 # Bilrost
 
-### Secure, Isolated VM for Running AI Agents
+### Harness Isolation for AI Agents
 
 [![Release](https://img.shields.io/github/v/release/Peleke/openclaw-sandbox?style=for-the-badge&color=green)](https://github.com/Peleke/openclaw-sandbox/releases)
 [![CI](https://img.shields.io/github/actions/workflow/status/Peleke/openclaw-sandbox/ci.yml?style=for-the-badge&label=CI)](https://github.com/Peleke/openclaw-sandbox/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-macOS-blue?style=for-the-badge&logo=apple&logoColor=white)](https://lima-vm.io/)
-[![Tests](https://img.shields.io/badge/Tests-273_passed-brightgreen?style=for-the-badge)](cli/tests/)
+[![Tests](https://img.shields.io/badge/Tests-296_passed-brightgreen?style=for-the-badge)](cli/tests/)
 
 **Run AI agents with network containment, audit trails, and secrets management.**
 
@@ -17,6 +17,8 @@
 ---
 
 </div>
+
+> **Status: deprecated.** Bilrost is no longer in active use and remains available as a research artifact. It provides harness isolation for experiments and is not a hardened security product. Releases are not signed with PyPI attestations, and CI is maintained on a best-effort basis.
 
 ## The Problem
 
@@ -30,7 +32,7 @@ You need the agent to do real work — access your code, call APIs, run tools �
 
 ## The Solution
 
-**Bilrost** runs agents inside a hardened Lima VM with strict network policies, OverlayFS filesystem isolation, and Docker-containerized tool execution. Your code is mounted read-only. All writes are contained in an overlay. Changes only reach your host through a validated sync gate with secret scanning.
+**Bilrost** runs agents inside a Lima VM with strict network policies, OverlayFS filesystem isolation, and Docker-containerized tool execution. Your code is mounted read-only. All writes are contained in an overlay. Changes only reach your host through a validated sync gate with secret scanning.
 
 One command to provision. One command to tear down. Everything in between is contained.
 
@@ -39,7 +41,7 @@ You: bilrost up
      → Lima VM created (Ubuntu 24.04, Apple VZ)
      → Ansible provisions 10 roles (overlay, Docker, firewall, secrets, gateway...)
      → Gateway starts on :18789
-     → Agent is running. You are safe.
+     → Agent is running inside the VM.
 
 You: bilrost status
      → VM: Running | Mode: secure | Overlay: active
